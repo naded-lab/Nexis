@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +39,9 @@ import com.nadidstudio.nexis.ui.theme.NexisColors
  * Post-login dashboard: pick which assistant to open.
  * v1 scope is exactly these two (Coding, Chat) — Study/Educational
  * assistants are a later addition, not shown here.
+ *
+ * Styled to match the Splash/Login identity: solid Teal top bar with a
+ * white NEXIS wordmark, instead of the unstyled default Material bar.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,27 +50,35 @@ fun NexisHomeScreen(
     onOpenSettings: () -> Unit
 ) {
     Scaffold(
+        containerColor = NexisColors.White,
         topBar = {
             TopAppBar(
                 title = { Text("NEXIS", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = NexisColors.White)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = NexisColors.Teal,
+                    titleContentColor = NexisColors.White,
+                    actionIconContentColor = NexisColors.White
+                )
             )
         }
     ) { padding ->
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .background(NexisColors.White)
                 .padding(padding)
                 .padding(20.dp)
         ) {
             Text(
                 text = "Choose an assistant",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                color = NexisColors.TextDark
             )
             Spacer(modifier = Modifier.height(16.dp))
 

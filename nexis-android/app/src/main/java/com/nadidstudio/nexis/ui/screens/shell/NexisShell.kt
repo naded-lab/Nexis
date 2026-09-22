@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
  * NexisNavHost after Login, so Splash/Login keep their own real back-stack.
  */
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun NexisShell(onLogout: () -> Unit = {}) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         val drawerState = rememberDrawerState(DrawerValue.Closed)

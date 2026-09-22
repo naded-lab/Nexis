@@ -23,6 +23,7 @@ import com.nadidstudio.nexis.ui.theme.NexisAppearance
 import com.nadidstudio.nexis.ui.theme.NexisPalette
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun SettingsScreen(onBack: () -> Unit, onManageModels: (AssistantRole) -> Unit, onLogout: () -> Unit) {
     var keysDialogProvider by remember { mutableStateOf<String?>(null) }
     var showAccountSheet by remember { mutableStateOf(false) }

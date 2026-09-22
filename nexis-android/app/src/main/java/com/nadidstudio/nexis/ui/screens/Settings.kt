@@ -28,8 +28,8 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
     var showAccountSheet by remember { mutableStateOf(false) }
     var showAppearanceDialog by remember { mutableStateOf(false) }
 
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)) {
-        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onBack) { Icon(Icons.Outlined.Close, "إغلاق") }; Text("الإعدادات", fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }; Spacer(Modifier.height(10.dp)) }
+    LazyColumn(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 14.dp), contentPadding = PaddingValues(top = 6.dp, bottom = 28.dp)) {
+        item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onBack) { Icon(Icons.Outlined.Close, "إغلاق") }; Text("الإعدادات", fontSize = 20.sp, fontWeight = FontWeight.SemiBold) }; Spacer(Modifier.height(4.dp)) }
 
         // "تعديل الملف الشخصي" now lives inside "الحساب الشخصي" (see the sheet
         // below) instead of sitting as its own row here.
@@ -47,7 +47,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
         item { SettingGroup { SettingRow("Termux", "ربط بيئة التطوير لاحقًا", Icons.Outlined.Terminal); SettingRow("GitHub", if (NexisSessionStore.keyStoreForSettings.hasAnyKey("github")) "متصل" else "غير متصل", Icons.Outlined.Code, onClick = { keysDialogProvider = "github" }) } }
 
         item {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(14.dp))
             Button(
                 onClick = onLogout,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -110,11 +110,11 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
     }
 }
 
-@Composable private fun SectionTitle(text: String) { Text(text, fontSize = 11.sp, color = NexisPalette.Muted, modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 7.dp)) }
+@Composable private fun SectionTitle(text: String) { Text(text, fontSize = 11.sp, color = NexisPalette.Muted, modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 5.dp)) }
 @Composable private fun SettingGroup(content: @Composable ColumnScope.() -> Unit) { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(16.dp)) { Column(Modifier.fillMaxWidth(), content = content) } }
 @Composable private fun SettingRow(title: String, sub: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: (() -> Unit)? = null) {
-    var modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp) as Modifier
-    if (onClick != null) modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 13.dp, vertical = 12.dp)
+    var modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp) as Modifier
+    if (onClick != null) modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 13.dp, vertical = 10.dp)
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, Modifier.size(18.dp), tint = NexisPalette.Muted)
         Spacer(Modifier.width(13.dp))

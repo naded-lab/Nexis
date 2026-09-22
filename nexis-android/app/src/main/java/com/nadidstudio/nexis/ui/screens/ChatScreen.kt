@@ -1,11 +1,14 @@
 package com.nadidstudio.nexis.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -17,12 +20,14 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import com.nadidstudio.nexis.R
 import com.nadidstudio.nexis.ui.session.NexisSessionStore
 import com.nadidstudio.nexis.ui.session.UiMessage
 import com.nadidstudio.nexis.ui.theme.NexisPalette
@@ -46,9 +51,8 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             TopBar(onOpenDrawer = onOpenDrawer, onAssistant = onAssistant)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))
 
-            if (messages.isEmpty()) EmptyChat() else LazyColumn(
+            if (messages.isEmpty()) Box(Modifier.weight(1f)) { EmptyChat() } else LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 22.dp),
@@ -80,28 +84,50 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 }
 
-// Header is a Box, not a Row, so the assistant chip can sit dead-center
-// regardless of how wide the two icon buttons on either side are — that
-// centering is what a Row-with-weighted-spacer can't guarantee once both
-// sides are occupied. Menu stays on its established side (screen-right,
-// i.e. RTL "Start"); new-chat now lives opposite it at screen-top-left
-// (RTL "End"), replacing the old bottom-corner FAB.
+// Header per the reference screenshot: no hard-edged shapes anywhere. Menu
+// and new-chat each sit in their own soft circular button, and the
+// assistant selector is a full pill (rounded ends) in dead-center — a Box
+// (not a Row) so centering holds regardless of how wide the two side
+// buttons are. No divider under the header either, matching the reference.
 @Composable private fun TopBar(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        AssistChip(
-            onClick = onAssistant,
-            label = { Text(NexisSessionStore.selectedRole.title(), fontSize = 11.sp) },
-            leadingIcon = { Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(14.dp)) },
-            modifier = Modifier.align(Alignment.Center)
-        )
-        IconButton(onClick = onOpenDrawer, modifier = Modifier.align(Alignment.CenterStart)) {
+        AssistantPill(onClick = onAssistant, modifier = Modifier.align(Alignment.Center))
+        CircleIconButton(onClick = onOpenDrawer, modifier = Modifier.align(Alignment.CenterStart)) {
             MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
         }
-        IconButton(onClick = { NexisSessionStore.newChat() }, modifier = Modifier.align(Alignment.CenterEnd)) {
-            Icon(Icons.Outlined.AddComment, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface)
+        // New-chat: a soft circle with a "start over" loop glyph, no plus sign —
+        // matches the reference icon rather than the previous chat-bubble-plus.
+        CircleIconButton(onClick = { NexisSessionStore.newChat() }, modifier = Modifier.align(Alignment.CenterEnd)) {
+            Icon(Icons.Outlined.Autorenew, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(19.dp))
+        }
+    }
+}
+
+@Composable private fun CircleIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Surface(onClick = onClick, modifier = modifier.size(40.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainer) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+    }
+}
+
+// Full pill (rounded ends), a hairline accent border, a dropdown chevron,
+// the role name, then a small role icon — matching the reference capsule.
+@Composable private fun AssistantPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, NexisPalette.Accent.copy(alpha = .28f))
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.KeyboardArrowDown, null, tint = NexisPalette.Accent, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(NexisSessionStore.selectedRole.title(), fontSize = 12.sp, color = NexisPalette.Accent, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Outlined.Code, null, tint = NexisPalette.Accent, modifier = Modifier.size(14.dp))
         }
     }
 }
@@ -109,8 +135,8 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
 // Three equal-width bars, evenly spaced — a single consistent glyph rather
 // than the previous tapered/hamburger look.
 @Composable private fun MenuGlyph(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(21.dp)) {
-        val strokeH = 2.2.dp.toPx()
+    Canvas(modifier = modifier.size(19.dp)) {
+        val strokeH = 2.dp.toPx()
         val corner = CornerRadius(strokeH / 2f)
         val gap = (size.height - strokeH * 3f) / 2f
         repeat(3) { i ->
@@ -120,15 +146,17 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 }
 
+// Just a soft, low-opacity watermark of the real brand mark, centered —
+// per the reference screenshot, nothing else (no heading, no subtext) so
+// the space stays clean and out of the way.
 @Composable private fun EmptyChat() {
-    Column(Modifier.fillMaxSize().padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.size(54.dp).background(NexisPalette.Accent.copy(alpha = .10f), RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) {
-            Icon(Icons.Outlined.AutoAwesome, null, tint = NexisPalette.Accent, modifier = Modifier.size(24.dp))
-        }
-        Spacer(Modifier.height(16.dp))
-        Text("مرحباً، كيف أقدر أساعدك؟", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        Text("اكتب سؤالًا أو فكرة، وسنرتبها ونحوّلها إلى خطوات واضحة.", color = NexisPalette.LightSecondary, fontSize = 13.sp, lineHeight = 21.sp, textAlign = TextAlign.Center)
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Image(
+            painter = painterResource(R.drawable.ic_nexis_logo_mark),
+            contentDescription = null,
+            modifier = Modifier.size(190.dp),
+            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f))
+        )
     }
 }
 
@@ -149,12 +177,33 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
 
 @Composable private fun ThinkingBubble() { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp)) { Row(Modifier.padding(horizontal = 15.dp, vertical = 13.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) { repeat(3) { Box(Modifier.size(5.dp).background(NexisPalette.Muted, RoundedCornerShape(50))) } } } } }
 
+// Input bar per the reference: a green circular voice button and a plain
+// mic icon sit OUTSIDE the field, to its side; the white pill itself only
+// holds the leading action (add, or send once there's text) and the "اسأل"
+// placeholder — no icons crowd the inside of the pill beyond that.
 @Composable private fun Composer(value: String, onValueChange: (String) -> Unit, onTools: () -> Unit, onSend: () -> Unit) {
-    Surface(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp), shape = RoundedCornerShape(27.dp), color = MaterialTheme.colorScheme.surfaceContainer, border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        Row(Modifier.fillMaxWidth().padding(start = 5.dp, end = 7.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.Bottom) {
-            IconButton(onClick = onTools, modifier = Modifier.size(39.dp)) { Icon(Icons.Outlined.Add, "إضافة") }
-            TextField(value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), placeholder = { Text("اكتب رسالتك…", color = NexisPalette.Muted) }, maxLines = 5, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), textStyle = LocalTextStyle.current.copy(fontSize = 14.sp))
-            FilledIconButton(onClick = onSend, enabled = value.isNotBlank(), modifier = Modifier.size(39.dp)) { Icon(Icons.Outlined.ArrowUpward, "إرسال", Modifier.size(18.dp)) }
+    Row(
+        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Surface(onClick = {}, shape = CircleShape, color = NexisPalette.Accent, modifier = Modifier.size(42.dp)) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.GraphicEq, "رسالة صوتية", tint = Color.White, modifier = Modifier.size(19.dp))
+            }
+        }
+        IconButton(onClick = {}, modifier = Modifier.size(38.dp)) {
+            Icon(Icons.Outlined.MicNone, "تسجيل صوتي", tint = MaterialTheme.colorScheme.onSurface)
+        }
+        Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(27.dp), color = MaterialTheme.colorScheme.surfaceContainer, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+            Row(Modifier.fillMaxWidth().padding(start = 5.dp, end = 7.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.Bottom) {
+                if (value.isNotBlank()) {
+                    FilledIconButton(onClick = onSend, modifier = Modifier.size(39.dp)) { Icon(Icons.Outlined.ArrowUpward, "إرسال", Modifier.size(18.dp)) }
+                } else {
+                    IconButton(onClick = onTools, modifier = Modifier.size(39.dp)) { Icon(Icons.Outlined.Add, "إضافة") }
+                }
+                TextField(value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), placeholder = { Text("اسأل", color = NexisPalette.Muted) }, maxLines = 5, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), textStyle = LocalTextStyle.current.copy(fontSize = 14.sp))
+            }
         }
     }
 }

@@ -7,29 +7,19 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.nadidstudio.nexis.ui.screens.login.NexisLoginScreen
 import com.nadidstudio.nexis.ui.screens.shell.NexisShell
-import com.nadidstudio.nexis.ui.screens.splash.NexisSplashScreen
 
 object NexisRoutes {
-    const val SPLASH = "splash"
     const val LOGIN = "login"
     const val SHELL = "shell"
 }
 
+// The old branded (teal, animated-logo) splash screen has been removed
+// entirely — the app now opens straight into Login. The Android 12+
+// SplashScreen API (installSplashScreen() in MainActivity) still covers the
+// brief real cold-start window, which is a separate, OS-level concern.
 @Composable
 fun NexisNavHost(navController: NavHostController = rememberNavController()) {
-    NavHost(navController = navController, startDestination = NexisRoutes.SPLASH) {
-
-        composable(NexisRoutes.SPLASH) {
-            NexisSplashScreen(
-                onFinished = {
-                    // TODO: once the "head" connectivity/model-health check can persist
-                    // a logged-in session, branch here instead of always going to Login.
-                    navController.navigate(NexisRoutes.LOGIN) {
-                        popUpTo(NexisRoutes.SPLASH) { inclusive = true }
-                    }
-                }
-            )
-        }
+    NavHost(navController = navController, startDestination = NexisRoutes.LOGIN) {
 
         composable(NexisRoutes.LOGIN) {
             NexisLoginScreen(

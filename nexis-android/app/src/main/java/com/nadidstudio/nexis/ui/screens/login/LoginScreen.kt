@@ -44,25 +44,41 @@ fun NexisLoginScreen(
             .background(
                 Brush.linearGradient(colors = listOf(NexisColors.Teal, NexisColors.TealLight, NexisColors.White))
             )
-            .padding(horizontal = 28.dp),
+            .padding(horizontal = 28.dp)
+            .padding(bottom = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Bottom
     ) {
-        // Approved hexagon-ribbon logo — exact uploaded asset, no substitute.
-        Image(
-            painter = painterResource(id = R.drawable.ic_nexis_logo),
-            contentDescription = "Nexis logo",
-            modifier = Modifier.size(72.dp)
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = "NEXIS",
-            color = NexisColors.White,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 4.sp
-        )
-        Spacer(modifier = Modifier.height(48.dp))
+        // Logo + wordmark float in the open space above the buttons instead of
+        // sitting dead-center, so the sign-in actions can anchor near the bottom.
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Approved hexagon-ribbon logo — exact uploaded asset, no substitute.
+            Image(
+                painter = painterResource(id = R.drawable.ic_nexis_logo),
+                contentDescription = "Nexis logo",
+                modifier = Modifier.size(72.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "NEXIS",
+                color = NexisColors.White,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 4.sp
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            // Light, simple welcome line — replaces the earlier heavier tagline.
+            Text(
+                text = "أهلاً بك",
+                color = NexisColors.White.copy(alpha = 0.85f),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Normal
+            )
+        }
 
         AuthButton(
             label = "Continue with Google",

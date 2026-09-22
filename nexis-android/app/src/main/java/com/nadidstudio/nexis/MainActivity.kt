@@ -3,17 +3,21 @@ package com.nadidstudio.nexis
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.nadidstudio.nexis.ui.navigation.NexisNavHost
+import com.nadidstudio.nexis.ui.session.NexisSessionStore
+import com.nadidstudio.nexis.ui.theme.NexisTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NexisSessionStore.init(applicationContext)
+        enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            NexisTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     NexisNavHost()
                 }

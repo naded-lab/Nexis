@@ -15,11 +15,19 @@ abstract class BaseAssistant(
 ) {
     abstract val systemPromptPrefix: String
 
-    suspend fun sendMessage(conversation: Conversation, userText: String): OrchestratedResult {
+    suspend fun sendMessage(
+        conversation: Conversation,
+        userText: String,
+        chain: List<String>? = null
+    ): OrchestratedResult {
         conversation.messages.add(ChatMessage(role = "user", text = userText))
 
         val fullPrompt = buildPrompt(conversation)
-        val result = orchestrator.sendWithFallback(fullPrompt, role)
+        val result = if (chain != null) {
+            orchestrator.sendWithFallback(fullPrompt, role, chain)
+        } else {
+            orchestrator.sendWithFallback(fullPrompt, role)
+        }
 
         if (result is OrchestratedResult.Success) {
             conversation.messages.add(ChatMessage(role = "assistant", text = result.text))

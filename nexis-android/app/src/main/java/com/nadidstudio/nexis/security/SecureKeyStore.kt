@@ -19,6 +19,11 @@ import java.util.UUID
  */
 class SecureKeyStore(context: Context) {
 
+    // First touch of this (MasterKey generation via the Android Keystore +
+    // Tink) can block for a very noticeable amount of time on some devices —
+    // that cost must never land on the main thread. `warmUp()` below lets
+    // callers pay it on a background thread right after process start, so by
+    // the time a screen actually needs a key the value is already cached.
     private val prefs: SharedPreferences by lazy {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -31,6 +36,12 @@ class SecureKeyStore(context: Context) {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+    }
+
+    /** Forces the lazy Keystore/EncryptedSharedPreferences setup now. Call this
+     *  from a background dispatcher only — never from the main thread. */
+    fun warmUp() {
+        prefs
     }
 
     /** All keys currently stored for a provider, in the order they'll be tried. */

@@ -56,7 +56,7 @@ fun NexisLoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Approved hexagon-ribbon logo — exact uploaded asset, no substitute.
+            // Approved hexagon-ribbon logo (white cutout, on the teal background).
             Image(
                 painter = painterResource(id = R.drawable.ic_nexis_logo),
                 contentDescription = "Nexis logo",
@@ -69,14 +69,6 @@ fun NexisLoginScreen(
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 4.sp
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            // Light, simple welcome line — replaces the earlier heavier tagline.
-            Text(
-                text = "أهلاً بك",
-                color = NexisColors.White.copy(alpha = 0.85f),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Normal
             )
         }
 

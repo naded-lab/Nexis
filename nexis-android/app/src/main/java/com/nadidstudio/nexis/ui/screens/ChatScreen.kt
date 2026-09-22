@@ -42,18 +42,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        floatingActionButton = {
-            // New-chat FAB: chat-bubble glyph reads clearer at a glance than the
-            // previous pencil icon for "start a new conversation".
-            FloatingActionButton(
-                onClick = { NexisSessionStore.newChat() },
-                containerColor = NexisPalette.Accent,
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Outlined.ChatBubble, "محادثة جديدة")
-            }
-        }
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             TopBar(onOpenDrawer = onOpenDrawer, onAssistant = onAssistant)
@@ -91,24 +80,42 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 }
 
+// Header is a Box, not a Row, so the assistant chip can sit dead-center
+// regardless of how wide the two icon buttons on either side are — that
+// centering is what a Row-with-weighted-spacer can't guarantee once both
+// sides are occupied. Menu stays on its established side (screen-right,
+// i.e. RTL "Start"); new-chat now lives opposite it at screen-top-left
+// (RTL "End"), replacing the old bottom-corner FAB.
 @Composable private fun TopBar(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onOpenDrawer) { MenuGlyph(tint = MaterialTheme.colorScheme.onSurface) }
-        Spacer(Modifier.width(2.dp))
-        AssistChip(onClick = onAssistant, label = { Text(NexisSessionStore.selectedRole.title(), fontSize = 11.sp) }, leadingIcon = { Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(14.dp)) })
-        Spacer(Modifier.weight(1f))
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        AssistChip(
+            onClick = onAssistant,
+            label = { Text(NexisSessionStore.selectedRole.title(), fontSize = 11.sp) },
+            leadingIcon = { Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(14.dp)) },
+            modifier = Modifier.align(Alignment.Center)
+        )
+        IconButton(onClick = onOpenDrawer, modifier = Modifier.align(Alignment.CenterStart)) {
+            MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
+        }
+        IconButton(onClick = { NexisSessionStore.newChat() }, modifier = Modifier.align(Alignment.CenterEnd)) {
+            Icon(Icons.Outlined.AddComment, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface)
+        }
     }
 }
 
+// Three equal-width bars, evenly spaced — a single consistent glyph rather
+// than the previous tapered/hamburger look.
 @Composable private fun MenuGlyph(tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.size(21.dp)) {
         val strokeH = 2.2.dp.toPx()
         val corner = CornerRadius(strokeH / 2f)
         val gap = (size.height - strokeH * 3f) / 2f
-        val widths = listOf(size.width, size.width * 0.7f, size.width * 0.45f)
-        widths.forEachIndexed { i, w ->
+        repeat(3) { i ->
             val y = i * (strokeH + gap)
-            drawRoundRect(color = tint, topLeft = Offset((size.width - w) / 2f, y), size = Size(w, strokeH), cornerRadius = corner)
+            drawRoundRect(color = tint, topLeft = Offset(0f, y), size = Size(size.width, strokeH), cornerRadius = corner)
         }
     }
 }

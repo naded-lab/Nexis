@@ -62,6 +62,16 @@ object NexisSessionStore {
         initialized = true
     }
 
+    /** Pre-warms the encrypted key store off the main thread right after
+     *  launch, so the first screen that touches API keys (Settings, the
+     *  model sheet) never blocks the UI thread on Keystore setup. Call once
+     *  from a background coroutine, e.g. MainActivity.onCreate via lifecycleScope. */
+    suspend fun warmUpSecureStorage() {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            keyStore.warmUp()
+        }
+    }
+
     var selectedRole by mutableStateOf(AssistantRole.CODING)
         private set
 

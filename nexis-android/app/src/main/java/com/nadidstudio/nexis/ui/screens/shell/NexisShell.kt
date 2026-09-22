@@ -6,7 +6,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-import com.nadidstudio.nexis.assistants.AssistantRole
 import com.nadidstudio.nexis.ui.screens.AssistantSheet
 import com.nadidstudio.nexis.ui.screens.ChatScreen
 import com.nadidstudio.nexis.ui.screens.ModelSheet
@@ -57,10 +56,6 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                 )
                 "settings" -> SettingsScreen(
                     onBack = { page = "chat" },
-                    onManageModels = { role ->
-                        NexisSessionStore.selectRole(role)
-                        sheet = "models"
-                    },
                     onLogout = onLogout
                 )
                 else -> ChatScreen(

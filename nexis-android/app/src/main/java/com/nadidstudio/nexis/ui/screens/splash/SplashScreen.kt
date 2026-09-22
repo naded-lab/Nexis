@@ -27,8 +27,8 @@ import com.nadidstudio.nexis.ui.theme.NexisColors
 
 /**
  * Splash screen: teal -> white diagonal gradient, the approved hexagon-ribbon
- * logo mark (must be the exact uploaded asset, not a redrawn substitute — see
- * ic_nexis_logo below), and the NEXIS wordmark underneath.
+ * logo mark (white cutout of the uploaded asset, drawable/ic_nexis_logo),
+ * and the NEXIS wordmark underneath.
  *
  * Auto-navigates after [holdMillis] once the fade/scale-in settles, giving the
  * app time to run the "head" connectivity/model health check in the background
@@ -61,7 +61,7 @@ fun NexisSplashScreen(
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             // IMPORTANT: ic_nexis_logo must be the exact approved hexagon-ribbon
-            // PNG/vector the user supplied — never a re-simplified icon.
+            // asset, not a redrawn substitute.
             Image(
                 painter = painterResource(id = R.drawable.ic_nexis_logo),
                 contentDescription = "Nexis logo",

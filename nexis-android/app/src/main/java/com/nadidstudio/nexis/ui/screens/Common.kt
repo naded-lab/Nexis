@@ -5,11 +5,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -94,16 +95,27 @@ private fun AssistantSheetRow(role: AssistantRole, selected: AssistantRole, onSe
 /**
  * Picks which AI MODEL(S) are enabled for the current assistant role's
  * fallback chain — separate from [AssistantSheet]. Same visual language.
+ *
+ * This is the single entry point for AI models: it now also owns key
+ * management directly (tap the key icon on a row), so nothing here requires
+ * leaving the drawer to open general Settings.
  */
 @Composable
 fun ModelSheet(role: AssistantRole) {
+    var keysDialogProvider by remember { mutableStateOf<String?>(null) }
+
     Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)) {
         Text("نماذج الذكاء الاصطناعي", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 3.dp))
-        Text("فعّل أو عطّل نموذجًا ضمن سلسلة ${role.title()}", fontSize = 11.sp, color = NexisPalette.LightSecondary, modifier = Modifier.padding(bottom = 12.dp))
+        Text("فعّل أو عطّل نموذجًا ضمن سلسلة ${role.title()}، وأدر مفاتيح API مباشرة", fontSize = 11.sp, color = NexisPalette.LightSecondary, modifier = Modifier.padding(bottom = 12.dp))
         ModelRegistry.allProviderIds().forEach { providerId ->
-            ModelSheetRow(providerId, NexisSessionStore.isProviderEnabled(role, providerId)) { enabled ->
-                NexisSessionStore.toggleProvider(role, providerId, enabled)
-            }
+            val keyCount = NexisSessionStore.keyStoreForSettings.getKeys(providerId).size
+            ModelSheetRow(
+                providerId = providerId,
+                keyCount = keyCount,
+                enabled = NexisSessionStore.isProviderEnabled(role, providerId),
+                onToggle = { enabled -> NexisSessionStore.toggleProvider(role, providerId, enabled) },
+                onManageKeys = { keysDialogProvider = providerId }
+            )
         }
         Spacer(Modifier.height(8.dp))
         Surface(onClick = { }, color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(15.dp)) {
@@ -115,18 +127,72 @@ fun ModelSheet(role: AssistantRole) {
         }
         Spacer(Modifier.height(22.dp))
     }
+
+    val provider = keysDialogProvider
+    if (provider != null) {
+        ApiKeyDialog(providerId = provider, onDismiss = { keysDialogProvider = null })
+    }
 }
 
 @Composable
-private fun ModelSheetRow(providerId: String, enabled: Boolean, onToggle: (Boolean) -> Unit) {
+private fun ModelSheetRow(
+    providerId: String,
+    keyCount: Int,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onManageKeys: () -> Unit
+) {
     Surface(onClick = { onToggle(!enabled) }, color = if (enabled) NexisPalette.Accent.copy(alpha = .09f) else Color.Transparent, shape = RoundedCornerShape(15.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(38.dp).background(if (enabled) NexisPalette.Accent else MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Outlined.AutoAwesome, null, tint = if (enabled) Color.White else NexisPalette.Accent, modifier = Modifier.size(19.dp))
             }
             Spacer(Modifier.width(11.dp))
-            Text(providerDisplayName(providerId), fontSize = 13.sp, fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Normal, modifier = Modifier.weight(1f))
-            if (enabled) Icon(Icons.Outlined.Check, null, tint = NexisPalette.Accent, modifier = Modifier.size(19.dp))
+            Column(Modifier.weight(1f)) {
+                Text(providerDisplayName(providerId), fontSize = 13.sp, fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Normal)
+                Text(if (keyCount > 0) "$keyCount مفتاح مضاف" else "لا يوجد مفتاح", fontSize = 10.sp, color = NexisPalette.Muted)
+            }
+            if (enabled) Icon(Icons.Outlined.Check, null, tint = NexisPalette.Accent, modifier = Modifier.size(19.dp).padding(end = 4.dp))
+            IconButton(onClick = onManageKeys, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Outlined.VpnKey, "إدارة مفاتيح ${providerDisplayName(providerId)}", tint = NexisPalette.Muted, modifier = Modifier.size(16.dp))
+            }
         }
     }
+}
+
+/** Shared key-management dialog — reachable both from the AI-models picker
+ *  in the drawer (see [ModelSheet]) and from the GitHub row in Settings. */
+@Composable
+fun ApiKeyDialog(providerId: String, onDismiss: () -> Unit) {
+    var newKey by remember { mutableStateOf("") }
+    var keys by remember { mutableStateOf(NexisSessionStore.keyStoreForSettings.getKeys(providerId)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (providerId == "github") "توكن GitHub" else "مفاتيح ${providerDisplayName(providerId)}") },
+        text = {
+            Column {
+                keys.forEach { entry ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("•••• ${entry.keyValue.takeLast(4)}", fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        IconButton(onClick = {
+                            NexisSessionStore.keyStoreForSettings.removeKey(providerId, entry.id)
+                            keys = NexisSessionStore.keyStoreForSettings.getKeys(providerId)
+                        }) { Icon(Icons.Outlined.Delete, "حذف") }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = newKey, onValueChange = { newKey = it }, label = { Text("مفتاح جديد") }, singleLine = true)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (newKey.isNotBlank()) {
+                    NexisSessionStore.keyStoreForSettings.addKey(providerId, newKey.trim())
+                    keys = NexisSessionStore.keyStoreForSettings.getKeys(providerId)
+                    newKey = ""
+                }
+            }) { Text("إضافة") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("تم") } }
+    )
 }

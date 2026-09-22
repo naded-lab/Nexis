@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.nadidstudio.nexis.assistants.AssistantRole
 import com.nadidstudio.nexis.ui.session.NexisSessionStore
 import com.nadidstudio.nexis.ui.theme.AppearanceMode
 import com.nadidstudio.nexis.ui.theme.NexisAppearance
@@ -24,10 +23,9 @@ import com.nadidstudio.nexis.ui.theme.NexisPalette
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-fun SettingsScreen(onBack: () -> Unit, onManageModels: (AssistantRole) -> Unit, onLogout: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
     var keysDialogProvider by remember { mutableStateOf<String?>(null) }
     var showAccountSheet by remember { mutableStateOf(false) }
-    var showAiModelsSheet by remember { mutableStateOf(false) }
     var showAppearanceDialog by remember { mutableStateOf(false) }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp)) {
@@ -38,10 +36,9 @@ fun SettingsScreen(onBack: () -> Unit, onManageModels: (AssistantRole) -> Unit, 
         item { SectionTitle("الحساب") }
         item { SettingGroup { SettingRow("الحساب الشخصي", "الاسم والصورة والبيانات", Icons.Outlined.Person, onClick = { showAccountSheet = true }); SettingRow("التخزين", "إدارة البيانات والمحادثات", Icons.Outlined.Storage) } }
 
-        // "نماذج الذكاء الاصطناعي" و "مفاتيح API" لم يعودا قسمين كاملين هنا —
-        // بل صف واحد يفتح قسمًا فرعيًا يجمعهما معًا (انظر الشيت أدناه).
-        item { SectionTitle("الذكاء الاصطناعي") }
-        item { SettingGroup { SettingRow("نماذج الذكاء الاصطناعي", "النماذج ومفاتيح API", Icons.Outlined.AutoAwesome, onClick = { showAiModelsSheet = true }) } }
+        // "نماذج الذكاء الاصطناعي ومفاتيح API" لم تعد بطاقة هنا إطلاقًا — انتقلت
+        // إلى زر رئيسي أعلى القائمة الجانبية (NexisDrawer -> ModelSheet)، وأصبحت
+        // إدارة المفاتيح تتم من هناك مباشرة دون الحاجة للدخول إلى الإعدادات.
 
         item { SectionTitle("التطبيق") }
         item { SettingGroup { SettingRow("المظهر", NexisAppearance.mode.label, Icons.Outlined.Brightness6, onClick = { showAppearanceDialog = true }); SettingRow("اللغة", "العربية", Icons.Outlined.Language); SettingRow("الإشعارات", "تنبيهات التطبيق", Icons.Outlined.Notifications) } }
@@ -82,30 +79,6 @@ fun SettingsScreen(onBack: () -> Unit, onManageModels: (AssistantRole) -> Unit, 
         }
     }
 
-    if (showAiModelsSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showAiModelsSheet = false },
-            containerColor = MaterialTheme.colorScheme.surface,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = NexisPalette.LightMuted) }
-        ) {
-            Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 18.dp)) {
-                Text("نماذج الذكاء الاصطناعي", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 12.dp))
-                SectionTitle("النماذج")
-                SettingGroup {
-                    SettingRow("نماذج مساعد البرمجة", NexisSessionStore.chainFor(AssistantRole.CODING).joinToString(", ") { providerDisplayName(it) }, Icons.Outlined.Code, onClick = { showAiModelsSheet = false; onManageModels(AssistantRole.CODING) })
-                    SettingRow("نماذج المساعد العام", NexisSessionStore.chainFor(AssistantRole.CHAT).joinToString(", ") { providerDisplayName(it) }, Icons.Outlined.ChatBubbleOutline, onClick = { showAiModelsSheet = false; onManageModels(AssistantRole.CHAT) })
-                }
-                SectionTitle("مفاتيح API")
-                SettingGroup {
-                    NexisSessionStore.providerIds.forEach { providerId ->
-                        val count = NexisSessionStore.keyStoreForSettings.getKeys(providerId).size
-                        SettingRow(providerDisplayName(providerId), if (count > 0) "$count مفتاح مضاف" else "لا يوجد مفتاح", Icons.Outlined.VpnKey, onClick = { showAiModelsSheet = false; keysDialogProvider = providerId })
-                    }
-                }
-            }
-        }
-    }
-
     if (showAppearanceDialog) {
         AlertDialog(
             onDismissRequest = { showAppearanceDialog = false },
@@ -135,41 +108,6 @@ fun SettingsScreen(onBack: () -> Unit, onManageModels: (AssistantRole) -> Unit, 
     if (provider != null) {
         ApiKeyDialog(providerId = provider, onDismiss = { keysDialogProvider = null })
     }
-}
-
-@Composable
-private fun ApiKeyDialog(providerId: String, onDismiss: () -> Unit) {
-    var newKey by remember { mutableStateOf("") }
-    var keys by remember { mutableStateOf(NexisSessionStore.keyStoreForSettings.getKeys(providerId)) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (providerId == "github") "توكن GitHub" else "مفاتيح ${providerDisplayName(providerId)}") },
-        text = {
-            Column {
-                keys.forEach { entry ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("•••• ${entry.keyValue.takeLast(4)}", fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        IconButton(onClick = {
-                            NexisSessionStore.keyStoreForSettings.removeKey(providerId, entry.id)
-                            keys = NexisSessionStore.keyStoreForSettings.getKeys(providerId)
-                        }) { Icon(Icons.Outlined.Delete, "حذف") }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = newKey, onValueChange = { newKey = it }, label = { Text("مفتاح جديد") }, singleLine = true)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                if (newKey.isNotBlank()) {
-                    NexisSessionStore.keyStoreForSettings.addKey(providerId, newKey.trim())
-                    keys = NexisSessionStore.keyStoreForSettings.getKeys(providerId)
-                    newKey = ""
-                }
-            }) { Text("إضافة") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("تم") } }
-    )
 }
 
 @Composable private fun SectionTitle(text: String) { Text(text, fontSize = 11.sp, color = NexisPalette.Muted, modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 7.dp)) }

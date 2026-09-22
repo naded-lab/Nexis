@@ -48,10 +48,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.core:core-ktx:1.13.1")
-    // Android 12+ SplashScreen API (back-compat to minSdk) — shows the brand
-    // background/icon instantly at process start instead of a blank white
-    // window while the Activity/Compose cold-starts.
-    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.1")
     implementation("androidx.navigation:navigation-compose:2.8.3")
 

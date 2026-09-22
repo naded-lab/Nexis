@@ -98,10 +98,10 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
         CircleIconButton(onClick = onOpenDrawer, modifier = Modifier.align(Alignment.CenterStart)) {
             MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
         }
-        // New-chat: a soft circle with a "start over" loop glyph, no plus sign —
-        // matches the reference icon rather than the previous chat-bubble-plus.
+        // New-chat: pencil/compose glyph — reads clearly as "start a new
+        // chat", unlike a refresh/loop icon which was being read as "redo".
         CircleIconButton(onClick = { NexisSessionStore.newChat() }, modifier = Modifier.align(Alignment.CenterEnd)) {
-            Icon(Icons.Outlined.Autorenew, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(19.dp))
+            Icon(Icons.Outlined.Create, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -146,16 +146,17 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 }
 
-// Just a soft, low-opacity watermark of the real brand mark, centered —
-// per the reference screenshot, nothing else (no heading, no subtext) so
-// the space stays clean and out of the way.
+// A small, quiet watermark of the real brand mark, centered — per the
+// reference screenshot, nothing else (no heading, no subtext). Kept small
+// and very low-opacity on purpose so it reads as a subtle texture, not a
+// dominant logo taking over the empty state.
 @Composable private fun EmptyChat() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(R.drawable.ic_nexis_logo_mark),
             contentDescription = null,
-            modifier = Modifier.size(190.dp),
-            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f))
+            modifier = Modifier.size(108.dp),
+            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
         )
     }
 }
@@ -178,31 +179,41 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
 @Composable private fun ThinkingBubble() { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp)) { Row(Modifier.padding(horizontal = 15.dp, vertical = 13.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) { repeat(3) { Box(Modifier.size(5.dp).background(NexisPalette.Muted, RoundedCornerShape(50))) } } } } }
 
 // Input bar per the reference: a green circular voice button and a plain
-// mic icon sit OUTSIDE the field, to its side; the white pill itself only
-// holds the leading action (add, or send once there's text) and the "اسأل"
-// placeholder — no icons crowd the inside of the pill beyond that.
+// mic icon sit OUTSIDE the field, on its far physical-left edge; the white
+// pill itself only holds the leading action (add, or send once there's
+// text) and the "اسأل" placeholder. All three elements share one fixed
+// height so they line up cleanly instead of the pill looking taller.
+//
+// Code order matters here: under the app's RTL layout direction, a Row's
+// first child lands at the physical-right edge and its last child at the
+// physical-left edge. The pill is coded first (→ right, where Arabic text
+// naturally starts), and the green circle last (→ far left), matching the
+// reference exactly — getting this order backwards is what made the bar
+// look mirrored.
+private val ComposerElementHeight = 46.dp
+
 @Composable private fun Composer(value: String, onValueChange: (String) -> Unit, onTools: () -> Unit, onSend: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Surface(onClick = {}, shape = CircleShape, color = NexisPalette.Accent, modifier = Modifier.size(42.dp)) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.GraphicEq, "رسالة صوتية", tint = Color.White, modifier = Modifier.size(19.dp))
+        Surface(modifier = Modifier.weight(1f).height(ComposerElementHeight), shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainer, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (value.isNotBlank()) {
+                    FilledIconButton(onClick = onSend, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.ArrowUpward, "إرسال", Modifier.size(17.dp)) }
+                } else {
+                    IconButton(onClick = onTools, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, "إضافة") }
+                }
+                TextField(value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), placeholder = { Text("اسأل", color = NexisPalette.Muted) }, maxLines = 1, singleLine = true, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), textStyle = LocalTextStyle.current.copy(fontSize = 14.sp))
             }
         }
-        IconButton(onClick = {}, modifier = Modifier.size(38.dp)) {
+        IconButton(onClick = {}, modifier = Modifier.size(ComposerElementHeight)) {
             Icon(Icons.Outlined.MicNone, "تسجيل صوتي", tint = MaterialTheme.colorScheme.onSurface)
         }
-        Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(27.dp), color = MaterialTheme.colorScheme.surfaceContainer, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-            Row(Modifier.fillMaxWidth().padding(start = 5.dp, end = 7.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.Bottom) {
-                if (value.isNotBlank()) {
-                    FilledIconButton(onClick = onSend, modifier = Modifier.size(39.dp)) { Icon(Icons.Outlined.ArrowUpward, "إرسال", Modifier.size(18.dp)) }
-                } else {
-                    IconButton(onClick = onTools, modifier = Modifier.size(39.dp)) { Icon(Icons.Outlined.Add, "إضافة") }
-                }
-                TextField(value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), placeholder = { Text("اسأل", color = NexisPalette.Muted) }, maxLines = 5, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), textStyle = LocalTextStyle.current.copy(fontSize = 14.sp))
+        Surface(onClick = {}, shape = CircleShape, color = NexisPalette.Accent, modifier = Modifier.size(ComposerElementHeight)) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.GraphicEq, "رسالة صوتية", tint = Color.White, modifier = Modifier.size(19.dp))
             }
         }
     }

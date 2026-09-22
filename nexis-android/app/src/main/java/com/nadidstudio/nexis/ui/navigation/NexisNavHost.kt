@@ -14,9 +14,8 @@ object NexisRoutes {
 }
 
 // The old branded (teal, animated-logo) splash screen has been removed
-// entirely — the app now opens straight into Login. The Android 12+
-// SplashScreen API (installSplashScreen() in MainActivity) still covers the
-// brief real cold-start window, which is a separate, OS-level concern.
+// entirely — no custom Compose splash, no OS-level branded splash either.
+// The app opens straight into Login the instant the first frame renders.
 @Composable
 fun NexisNavHost(navController: NavHostController = rememberNavController()) {
     NavHost(navController = navController, startDestination = NexisRoutes.LOGIN) {

@@ -1,9 +1,12 @@
 package com.nadidstudio.nexis.ui.screens
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
@@ -12,11 +15,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.nadidstudio.nexis.backup.BackupState
 import com.nadidstudio.nexis.ui.session.NexisSessionStore
 import com.nadidstudio.nexis.ui.theme.AppearanceMode
 import com.nadidstudio.nexis.ui.theme.NexisAppearance
@@ -28,50 +34,57 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
     var keysDialogProvider by remember { mutableStateOf<String?>(null) }
     var showAccountSheet by remember { mutableStateOf(false) }
     var showAppearanceDialog by remember { mutableStateOf(false) }
+    var showBackupDialog by remember { mutableStateOf(false) }
     var notificationsOn by remember { mutableStateOf(true) }
 
-    LazyColumn(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 14.dp), contentPadding = PaddingValues(top = 6.dp, bottom = 28.dp)) {
-        // Centered bold title with a plain icon on either side, per the
-        // reference: back/close on one edge, title dead-center.
+    LazyColumn(
+        Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(top = 6.dp, bottom = 32.dp)
+    ) {
         item {
             Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                Text("الإعدادات", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text("الإعدادات", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) { Icon(Icons.Outlined.Close, "إغلاق") }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
         }
 
-        // "تعديل الملف الشخصي" now lives inside "الحساب الشخصي" (see the sheet
-        // below) instead of sitting as its own row here.
-        item { SectionTitle("الحساب") }
-        item { SettingGroup { SettingRow("الحساب الشخصي", "الاسم والصورة والبيانات", Icons.Outlined.Person, onClick = { showAccountSheet = true }); SettingRow("التخزين", "إدارة البيانات والمحادثات", Icons.Outlined.Storage) } }
+        item { ProfileCard(onClick = { showAccountSheet = true }) }
 
-        // "نماذج الذكاء الاصطناعي ومفاتيح API" لم تعد بطاقة هنا إطلاقًا — انتقلت
-        // إلى زر رئيسي أعلى القائمة الجانبية (NexisDrawer -> ModelSheet)، وأصبحت
-        // إدارة المفاتيح تتم من هناك مباشرة دون الحاجة للدخول إلى الإعدادات.
-
-        item { SectionTitle("التطبيق") }
+        item { SectionTitle("عام") }
         item {
             SettingGroup {
                 SettingRow("المظهر", NexisAppearance.mode.label, Icons.Outlined.Brightness6, onClick = { showAppearanceDialog = true })
+                GroupDivider()
                 SettingRow("اللغة", "العربية", Icons.Outlined.Language)
-                // Toggle-style row, matching the reference's switch rows —
-                // no navigation chevron needed since the switch itself is the control.
-                SettingSwitchRow("الإشعارات", "تنبيهات التطبيق", Icons.Outlined.Notifications, checked = notificationsOn, onCheckedChange = { notificationsOn = it })
+                GroupDivider()
+                SettingSwitchRow("الإشعارات", "تنبيهات التطبيق", Icons.Outlined.Notifications, notificationsOn) { notificationsOn = it }
+                GroupDivider()
+                SettingRow("التخزين", "إدارة البيانات والمحادثات", Icons.Outlined.Storage)
             }
         }
 
         item { SectionTitle("التطوير") }
-        item { SettingGroup { SettingRow("Termux", "ربط بيئة التطوير لاحقًا", Icons.Outlined.Terminal); SettingRow("GitHub", if (NexisSessionStore.keyStoreForSettings.hasAnyKey("github")) "متصل" else "غير متصل", Icons.Outlined.Code, onClick = { keysDialogProvider = "github" }) } }
-
-        // Log out as a plain red list row inside its own card, per the
-        // reference — not a big filled button.
         item {
-            Spacer(Modifier.height(14.dp))
-            SettingGroup { SettingRow("تسجيل خروج", "", Icons.AutoMirrored.Outlined.Logout, onClick = onLogout, danger = true) }
+            SettingGroup {
+                SettingRow("Termux", "ربط بيئة التطوير لاحقًا", Icons.Outlined.Terminal)
+                GroupDivider()
+                val connected = NexisSessionStore.keyStoreForSettings.hasAnyKey("github")
+                SettingRow("GitHub", if (connected) "متصل" else "غير متصل", Icons.Outlined.Code, onClick = { keysDialogProvider = "github" })
+                GroupDivider()
+                SettingRow("النسخ الاحتياطي", BackupState.status, Icons.Outlined.CloudUpload, onClick = { showBackupDialog = true })
+            }
         }
 
-        item { Spacer(Modifier.height(18.dp)); Text("Nexis 0.1.0", color = NexisPalette.Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
+        item {
+            Spacer(Modifier.height(20.dp))
+            SettingGroup { SettingRow("تسجيل خروج", "", Icons.AutoMirrored.Outlined.Logout, onClick = onLogout, danger = true, showChevron = false) }
+        }
+
+        item {
+            Spacer(Modifier.height(20.dp))
+            Text("الإصدار 0.1.0", color = subtleColor(), fontSize = 11.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        }
     }
 
     if (showAccountSheet) {
@@ -80,7 +93,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
             containerColor = MaterialTheme.colorScheme.surface,
             dragHandle = { BottomSheetDefaults.DragHandle(color = NexisPalette.LightMuted) }
         ) {
-            Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 18.dp)) {
+            Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 22.dp)) {
                 Text("الحساب الشخصي", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 12.dp))
                 SettingGroup {
                     // TODO: real profile-edit screen — not built yet.
@@ -115,35 +128,90 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
         )
     }
 
+    if (showBackupDialog) BackupDialog(onDismiss = { showBackupDialog = false })
+
     val provider = keysDialogProvider
     if (provider != null) {
         ApiKeyDialog(providerId = provider, onDismiss = { keysDialogProvider = null })
     }
 }
 
-@Composable private fun SectionTitle(text: String) { Text(text, fontSize = 11.sp, color = NexisPalette.Muted, modifier = Modifier.padding(start = 8.dp, top = 6.dp, bottom = 5.dp)) }
-@Composable private fun SettingGroup(content: @Composable ColumnScope.() -> Unit) { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(16.dp)) { Column(Modifier.fillMaxWidth(), content = content) } }
-@Composable private fun SettingRow(title: String, sub: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: (() -> Unit)? = null, danger: Boolean = false) {
-    var modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp) as Modifier
-    if (onClick != null) modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 13.dp, vertical = 10.dp)
-    val tint = if (danger) MaterialTheme.colorScheme.error else NexisPalette.Muted
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(18.dp), tint = tint)
-        Spacer(Modifier.width(13.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 13.sp, color = if (danger) MaterialTheme.colorScheme.error else Color.Unspecified)
-            if (sub.isNotEmpty()) Text(sub, fontSize = 10.sp, color = NexisPalette.Muted, maxLines = 1)
+@Composable private fun subtleColor(): Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+
+@Composable private fun SectionTitle(text: String) {
+    Text(
+        text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 6.dp, top = 22.dp, bottom = 8.dp)
+    )
+}
+
+@Composable private fun SettingGroup(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) { Column(Modifier.fillMaxWidth(), content = content) }
+}
+
+@Composable private fun GroupDivider() {
+    HorizontalDivider(Modifier.padding(start = 64.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+}
+
+@Composable private fun IconBadge(icon: ImageVector, danger: Boolean = false) {
+    val container = if (danger) MaterialTheme.colorScheme.error.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer
+    val tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Box(Modifier.size(36.dp).background(container, RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) {
+        Icon(icon, null, Modifier.size(19.dp), tint = tint)
+    }
+}
+
+@Composable private fun ProfileCard(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(52.dp).background(Brush.linearGradient(listOf(NexisPalette.Accent, NexisPalette.Accent2)), CircleShape),
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Outlined.Person, null, Modifier.size(28.dp), tint = Color.White) }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("الحساب الشخصي", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("الاسم والصورة والبيانات", fontSize = 12.sp, color = subtleColor())
+            }
+            Icon(Icons.Outlined.ChevronLeft, null, tint = subtleColor())
         }
     }
 }
 
-// Same row shape as SettingRow, but the trailing control is a Switch — for
-// settings the reference toggles directly rather than navigating into.
-@Composable private fun SettingSwitchRow(title: String, sub: String, icon: androidx.compose.ui.graphics.vector.ImageVector, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(18.dp), tint = NexisPalette.Muted)
-        Spacer(Modifier.width(13.dp))
-        Column(Modifier.weight(1f)) { Text(title, fontSize = 13.sp); if (sub.isNotEmpty()) Text(sub, fontSize = 10.sp, color = NexisPalette.Muted, maxLines = 1) }
+@Composable private fun SettingRow(
+    title: String, sub: String, icon: ImageVector,
+    onClick: (() -> Unit)? = null, danger: Boolean = false, showChevron: Boolean = true
+) {
+    var modifier = Modifier.fillMaxWidth() as Modifier
+    if (onClick != null) modifier = modifier.clickable(onClick = onClick)
+    Row(modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconBadge(icon, danger)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (danger) MaterialTheme.colorScheme.error else Color.Unspecified)
+            if (sub.isNotEmpty()) Text(sub, fontSize = 11.sp, color = subtleColor(), maxLines = 1)
+        }
+        if (onClick != null && showChevron) Icon(Icons.Outlined.ChevronLeft, null, Modifier.size(20.dp), tint = subtleColor())
+    }
+}
+
+@Composable private fun SettingSwitchRow(title: String, sub: String, icon: ImageVector, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconBadge(icon)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            if (sub.isNotEmpty()) Text(sub, fontSize = 11.sp, color = subtleColor(), maxLines = 1)
+        }
         Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedTrackColor = NexisPalette.Accent))
     }
 }

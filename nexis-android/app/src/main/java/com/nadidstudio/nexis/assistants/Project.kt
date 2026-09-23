@@ -1,5 +1,7 @@
 package com.nadidstudio.nexis.assistants
 
+import androidx.compose.runtime.mutableStateListOf
+
 /** MVP scope: only these two ship in the first version. */
 enum class AssistantRole {
     CODING,
@@ -31,6 +33,6 @@ data class Project(
     val id: String,
     val name: String,
     val assistantRole: AssistantRole,
-    val uploadedFilePaths: MutableList<String> = mutableListOf(),
+    val uploadedFilePaths: MutableList<String> = mutableStateListOf(),
     val conversations: MutableList<Conversation> = mutableListOf()
 )

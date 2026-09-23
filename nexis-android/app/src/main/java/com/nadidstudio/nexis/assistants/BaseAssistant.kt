@@ -42,7 +42,10 @@ abstract class BaseAssistant(
      */
     private fun buildPrompt(conversation: Conversation): String {
         val history = conversation.messages.joinToString("\n") { "${it.role}: ${it.text}" }
-        return "$systemPromptPrefix\n\n$history"
+        val files = com.nadidstudio.nexis.data.ProjectFiles.buildContext(
+            com.nadidstudio.nexis.data.InMemoryAppStore.findProject(conversation.projectId)
+        )
+        return if (files.isEmpty()) "$systemPromptPrefix\n\n$history" else "$systemPromptPrefix\n\n$files\n$history"
     }
 }
 

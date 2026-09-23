@@ -42,7 +42,12 @@ object NexisSessionStore {
     /** Call once, e.g. from MainActivity.onCreate(applicationContext). Safe to call more than once. */
     fun init(context: Context) {
         if (initialized) return
+        InMemoryAppStore.attach(context)
+        InMemoryAppStore.savedChains.forEach { (roleName, chain) ->
+            runCatching { AssistantRole.valueOf(roleName) }.getOrNull()?.let { roleChains[it] = chain }
+        }
         keyStore = SecureKeyStore(context.applicationContext)
+        com.nadidstudio.nexis.backup.GitHubBackup.attach(context, keyStore)
         orchestrator = FallbackOrchestrator(
             keyStore = keyStore,
             networkMonitor = NetworkMonitor(context.applicationContext),
@@ -57,9 +62,19 @@ object NexisSessionStore {
         if (InMemoryAppStore.projectsFor(AssistantRole.CHAT).isEmpty()) {
             InMemoryAppStore.createProject(AssistantRole.CHAT, "محادثة سريعة")
         }
-        selectedRole = AssistantRole.CODING
-        selectedProject = InMemoryAppStore.projectsFor(AssistantRole.CODING).first()
         initialized = true
+        openProject(InMemoryAppStore.projectsFor(AssistantRole.CODING).first())
+    }
+
+    /** Call after a restore replaced the local data: rebuilds chains and reopens a valid project. */
+    fun reloadAfterRestore() {
+        roleChains.clear()
+        InMemoryAppStore.savedChains.forEach { (roleName, chain) ->
+            runCatching { AssistantRole.valueOf(roleName) }.getOrNull()?.let { roleChains[it] = chain }
+        }
+        if (InMemoryAppStore.projectsFor(AssistantRole.CODING).isEmpty()) InMemoryAppStore.createProject(AssistantRole.CODING, "محادثة سريعة")
+        if (InMemoryAppStore.projectsFor(AssistantRole.CHAT).isEmpty()) InMemoryAppStore.createProject(AssistantRole.CHAT, "محادثة سريعة")
+        openProject(InMemoryAppStore.projectsFor(AssistantRole.CODING).first())
     }
 
     /** Pre-warms the encrypted key store off the main thread right after
@@ -89,6 +104,17 @@ object NexisSessionStore {
     var lastError by mutableStateOf<String?>(null)
         private set
 
+    var lastNotice by mutableStateOf<String?>(null)
+        private set
+
+    /** Imports a picked file into [project] (default: the open project) and reports the outcome. */
+    fun importFile(context: Context, uri: android.net.Uri, project: Project? = selectedProject) {
+        val target = project ?: return
+        val err = com.nadidstudio.nexis.data.ProjectFiles.import(context, target, uri)
+        lastError = err
+        lastNotice = if (err == null) "أُضيف الملف إلى مشروع «${target.name}»" else null
+    }
+
     val keyStoreForSettings: SecureKeyStore get() = keyStore
     val providerIds: List<String> get() = ModelRegistry.allProviderIds()
 
@@ -109,6 +135,8 @@ object NexisSessionStore {
         } else {
             current.filterNot { it == providerId }
         }
+        InMemoryAppStore.savedChains[role.name] = roleChains[role] ?: emptyList()
+        InMemoryAppStore.persist()
     }
 
     fun selectRole(role: AssistantRole) {
@@ -149,9 +177,11 @@ object NexisSessionStore {
         val assistant: BaseAssistant = if (selectedRole == AssistantRole.CODING) codingAssistant else chatAssistant
         sending = true
         lastError = null
+        lastNotice = null
         when (val result = assistant.sendMessage(conversation, text, chainFor(selectedRole))) {
             is OrchestratedResult.Success -> {
                 syncMessagesFromConversation()
+                InMemoryAppStore.persist()
             }
             is OrchestratedResult.Offline -> {
                 lastError = "لا يوجد اتصال بالإنترنت"
@@ -160,6 +190,8 @@ object NexisSessionStore {
                 lastError = "كل النماذج المتاحة فشلت — تحقق من مفاتيح API في الإعدادات"
             }
         }
+        // Persist even on failure: the user's message was already added to the conversation.
+        InMemoryAppStore.persist()
         sending = false
     }
 }

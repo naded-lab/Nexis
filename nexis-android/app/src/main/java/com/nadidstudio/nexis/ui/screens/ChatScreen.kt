@@ -1,5 +1,7 @@
 package com.nadidstudio.nexis.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -22,6 +24,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +44,11 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
     val messages = NexisSessionStore.messages
     val thinking = NexisSessionStore.sending
     val error = NexisSessionStore.lastError
+    val notice = NexisSessionStore.lastNotice
+    val context = LocalContext.current
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) NexisSessionStore.importFile(context, uri)
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
@@ -66,7 +74,11 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
                 Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
             }
 
-            if (showTools) ToolRow(onClose = { showTools = false })
+            if (notice != null) {
+                Text(notice, color = NexisPalette.Accent, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+            }
+
+            if (showTools) ToolRow(onClose = { showTools = false }, onFile = { showTools = false; pickFile.launch(arrayOf("*/*")) })
             Composer(
                 value = input,
                 onValueChange = { input = it },
@@ -236,22 +248,22 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
     }
 }
 
-@Composable private fun ToolRow(onClose: () -> Unit) {
+@Composable private fun ToolRow(onClose: () -> Unit, onFile: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("إرفاق", fontSize = 12.sp, color = NexisPalette.Muted, modifier = Modifier.weight(1f))
             IconButton(onClick = onClose, modifier = Modifier.size(26.dp)) { Icon(Icons.Outlined.Close, "إغلاق", Modifier.size(15.dp)) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AttachTile("ملف", Icons.Outlined.AttachFile, Modifier.weight(1f))
+            AttachTile("ملف", Icons.Outlined.AttachFile, Modifier.weight(1f), onFile)
             AttachTile("صورة", Icons.Outlined.Image, Modifier.weight(1f))
             AttachTile("كاميرا", Icons.Outlined.PhotoCamera, Modifier.weight(1f))
         }
     }
 }
 
-@Composable private fun AttachTile(label: String, icon: ImageVector, modifier: Modifier = Modifier) {
-    Surface(onClick = {}, modifier = modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+@Composable private fun AttachTile(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
+    Surface(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(38.dp).background(NexisPalette.Accent.copy(alpha = .12f), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 Icon(icon, null, tint = NexisPalette.Accent, modifier = Modifier.size(18.dp))

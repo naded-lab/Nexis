@@ -33,7 +33,7 @@ import com.nadidstudio.nexis.ui.session.UiMessage
 import com.nadidstudio.nexis.ui.theme.NexisPalette
 
 @Composable
-fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
+fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -> Unit) {
     var input by remember { mutableStateOf("") }
     var showTools by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -71,6 +71,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
                 value = input,
                 onValueChange = { input = it },
                 onTools = { showTools = !showTools },
+                onModels = onModels,
                 onSend = {
                     val text = input.trim()
                     if (text.isNotEmpty() && !thinking) {
@@ -98,10 +99,10 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
         CircleIconButton(onClick = onOpenDrawer, modifier = Modifier.align(Alignment.CenterStart)) {
             MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
         }
-        // New-chat: pencil/compose glyph — reads clearly as "start a new
-        // chat", unlike a refresh/loop icon which was being read as "redo".
+        // New-chat: chat-bubble-with-plus, as requested — clearly reads as
+        // "start a new conversation".
         CircleIconButton(onClick = { NexisSessionStore.newChat() }, modifier = Modifier.align(Alignment.CenterEnd)) {
-            Icon(Icons.Outlined.Create, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+            Icon(Icons.Outlined.AddComment, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(19.dp))
         }
     }
 }
@@ -112,8 +113,10 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 }
 
-// Full pill (rounded ends), a hairline accent border, a dropdown chevron,
-// the role name, then a small role icon — matching the reference capsule.
+// Full pill (rounded ends) with a hairline accent border. A single dropdown
+// chevron is the only "this opens a picker" cue — the earlier version also
+// had a trailing code-brackets icon, which read as a second, redundant
+// affordance next to the chevron.
 @Composable private fun AssistantPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         onClick = onClick,
@@ -126,8 +129,6 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
             Icon(Icons.Outlined.KeyboardArrowDown, null, tint = NexisPalette.Accent, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(NexisSessionStore.selectedRole.title(), fontSize = 12.sp, color = NexisPalette.Accent, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Outlined.Code, null, tint = NexisPalette.Accent, modifier = Modifier.size(14.dp))
         }
     }
 }
@@ -178,43 +179,59 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
 
 @Composable private fun ThinkingBubble() { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp)) { Row(Modifier.padding(horizontal = 15.dp, vertical = 13.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) { repeat(3) { Box(Modifier.size(5.dp).background(NexisPalette.Muted, RoundedCornerShape(50))) } } } } }
 
-// Input bar per the reference: a green circular voice button and a plain
-// mic icon sit OUTSIDE the field, on its far physical-left edge; the white
-// pill itself only holds the leading action (add, or send once there's
-// text) and the "اسأل" placeholder. All three elements share one fixed
-// height so they line up cleanly instead of the pill looking taller.
-//
-// Code order matters here: under the app's RTL layout direction, a Row's
-// first child lands at the physical-right edge and its last child at the
-// physical-left edge. The pill is coded first (→ right, where Arabic text
-// naturally starts), and the green circle last (→ far left), matching the
-// reference exactly — getting this order backwards is what made the bar
-// look mirrored.
-private val ComposerElementHeight = 46.dp
-
-@Composable private fun Composer(value: String, onValueChange: (String) -> Unit, onTools: () -> Unit, onSend: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+// Input bar per the newest reference: one rounded card holding the text
+// field on top and a control row underneath — attach, the active-model
+// pill (English provider name, opens the models sheet), mic, and send.
+// Replaces the earlier separate-outer-circles layout.
+@Composable private fun Composer(value: String, onValueChange: (String) -> Unit, onTools: () -> Unit, onModels: () -> Unit, onSend: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Surface(modifier = Modifier.weight(1f).height(ComposerElementHeight), shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainer, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (value.isNotBlank()) {
-                    FilledIconButton(onClick = onSend, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.ArrowUpward, "إرسال", Modifier.size(17.dp)) }
-                } else {
-                    IconButton(onClick = onTools, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, "إضافة") }
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+            TextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("اسأل", color = NexisPalette.Muted) },
+                maxLines = 5,
+                colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
+                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
+            )
+            Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onTools, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, "إرفاق") }
+                Spacer(Modifier.width(2.dp))
+                ModelPill(onClick = onModels)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = {}, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.MicNone, "تسجيل صوتي", tint = MaterialTheme.colorScheme.onSurface) }
+                Spacer(Modifier.width(2.dp))
+                Surface(
+                    onClick = onSend,
+                    shape = CircleShape,
+                    color = if (value.isNotBlank()) NexisPalette.Accent else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.ArrowUpward, "إرسال", tint = if (value.isNotBlank()) Color.White else NexisPalette.Muted, modifier = Modifier.size(18.dp))
+                    }
                 }
-                TextField(value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), placeholder = { Text("اسأل", color = NexisPalette.Muted) }, maxLines = 1, singleLine = true, colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent), textStyle = LocalTextStyle.current.copy(fontSize = 14.sp))
             }
         }
-        IconButton(onClick = {}, modifier = Modifier.size(ComposerElementHeight)) {
-            Icon(Icons.Outlined.MicNone, "تسجيل صوتي", tint = MaterialTheme.colorScheme.onSurface)
-        }
-        Surface(onClick = {}, shape = CircleShape, color = NexisPalette.Accent, modifier = Modifier.size(ComposerElementHeight)) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.GraphicEq, "رسالة صوتية", tint = Color.White, modifier = Modifier.size(19.dp))
-            }
+    }
+}
+
+// Shows the model actually in use right now — the first entry in the
+// current role's fallback chain — by its plain English name (Claude,
+// ChatGPT, Gemini…), and opens the models sheet on tap.
+@Composable private fun ModelPill(onClick: () -> Unit) {
+    val provider = NexisSessionStore.chainFor(NexisSessionStore.selectedRole).firstOrNull() ?: "claude"
+    Surface(onClick = onClick, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(providerDisplayName(provider), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(3.dp))
+            Icon(Icons.Outlined.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
         }
     }
 }

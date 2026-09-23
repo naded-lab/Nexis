@@ -60,7 +60,8 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                 )
                 else -> ChatScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onAssistant = { sheet = "assistant" }
+                    onAssistant = { sheet = "assistant" },
+                    onModels = { sheet = "models" }
                 )
             }
         }

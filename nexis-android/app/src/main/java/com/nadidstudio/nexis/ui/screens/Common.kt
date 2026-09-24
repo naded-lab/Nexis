@@ -47,15 +47,9 @@ fun providerDisplayName(providerId: String): String = when (providerId) {
 
 @Composable
 fun Brand(modifier: Modifier = Modifier) {
+    // Text-only wordmark: the old sparkle/particles icon box was removed on purpose.
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.size(28.dp).background(NexisPalette.Accent, RoundedCornerShape(9.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Outlined.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(15.dp))
-        }
-        Spacer(Modifier.width(8.dp))
-        Text("NEXIS", fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+        Text("NEXIS", fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
     }
 }
 

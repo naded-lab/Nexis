@@ -54,11 +54,11 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
         item { SectionTitle("عام") }
         item {
             SettingGroup {
-                SettingRow("المظهر", NexisAppearance.mode.label, Icons.Outlined.Brightness6, onClick = { showAppearanceDialog = true })
+                SettingSwitchRow("الإشعارات", "تنبيهات التطبيق", Icons.Outlined.Notifications, notificationsOn) { notificationsOn = it }
                 GroupDivider()
                 SettingRow("اللغة", "العربية", Icons.Outlined.Language)
                 GroupDivider()
-                SettingSwitchRow("الإشعارات", "تنبيهات التطبيق", Icons.Outlined.Notifications, notificationsOn) { notificationsOn = it }
+                SettingRow("المظهر", NexisAppearance.mode.label, Icons.Outlined.Brightness6, onClick = { showAppearanceDialog = true })
                 GroupDivider()
                 SettingRow("التخزين", "إدارة البيانات والمحادثات", Icons.Outlined.Storage)
             }
@@ -78,7 +78,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
 
         item {
             Spacer(Modifier.height(20.dp))
-            SettingGroup { SettingRow("تسجيل خروج", "", Icons.AutoMirrored.Outlined.Logout, onClick = onLogout, danger = true, showChevron = false) }
+            SettingGroup { SettingRow("تسجيل خروج", "", Icons.AutoMirrored.Outlined.Logout, onClick = onLogout, danger = true) }
         }
 
         item {
@@ -182,14 +182,13 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
                 Text("الحساب الشخصي", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text("الاسم والصورة والبيانات", fontSize = 12.sp, color = subtleColor())
             }
-            Icon(Icons.Outlined.ChevronLeft, null, tint = subtleColor())
         }
     }
 }
 
 @Composable private fun SettingRow(
     title: String, sub: String, icon: ImageVector,
-    onClick: (() -> Unit)? = null, danger: Boolean = false, showChevron: Boolean = true
+    onClick: (() -> Unit)? = null, danger: Boolean = false
 ) {
     var modifier = Modifier.fillMaxWidth() as Modifier
     if (onClick != null) modifier = modifier.clickable(onClick = onClick)
@@ -200,7 +199,6 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (danger) MaterialTheme.colorScheme.error else Color.Unspecified)
             if (sub.isNotEmpty()) Text(sub, fontSize = 11.sp, color = subtleColor(), maxLines = 1)
         }
-        if (onClick != null && showChevron) Icon(Icons.Outlined.ChevronLeft, null, Modifier.size(20.dp), tint = subtleColor())
     }
 }
 

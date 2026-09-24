@@ -139,6 +139,13 @@ object NexisSessionStore {
         InMemoryAppStore.persist()
     }
 
+    /** Makes [providerId] the active (first) model of this role's chain; the others stay as fallbacks. */
+    fun setActiveProvider(role: AssistantRole, providerId: String) {
+        roleChains[role] = (listOf(providerId) + chainFor(role).filterNot { it == providerId }).take(5)
+        InMemoryAppStore.savedChains[role.name] = roleChains[role] ?: emptyList()
+        InMemoryAppStore.persist()
+    }
+
     fun selectRole(role: AssistantRole) {
         selectedRole = role
         val project = InMemoryAppStore.projectsFor(role).firstOrNull()

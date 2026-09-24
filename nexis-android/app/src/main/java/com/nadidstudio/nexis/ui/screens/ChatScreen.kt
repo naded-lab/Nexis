@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,7 +37,7 @@ import com.nadidstudio.nexis.ui.session.UiMessage
 import com.nadidstudio.nexis.ui.theme.NexisPalette
 
 @Composable
-fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -> Unit) {
+fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     var input by remember { mutableStateOf("") }
     var showTools by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -54,8 +55,20 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
+    // Only a boolean flip (not every animation frame of the keyboard) triggers this,
+    // so the screen doesn't recompose while the keyboard slides.
+    val imeInsets = WindowInsets.ime
+    val density = LocalDensity.current
+    val imeOpen by remember { derivedStateOf { imeInsets.getBottom(density) > 0 } }
+    LaunchedEffect(imeOpen) {
+        if (imeOpen && messages.isNotEmpty()) listState.scrollToItem(messages.lastIndex)
+    }
+
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        // Scaffold must NOT apply any system/keyboard insets: the header handles the
+        // status bar itself and only the bottom input area reacts to the keyboard.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             TopBar(onOpenDrawer = onOpenDrawer, onAssistant = onAssistant)
@@ -78,21 +91,25 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
                 Text(notice, color = NexisPalette.Accent, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
             }
 
-            if (showTools) ToolRow(onClose = { showTools = false }, onFile = { showTools = false; pickFile.launch(arrayOf("*/*")) })
-            Composer(
-                value = input,
-                onValueChange = { input = it },
-                onTools = { showTools = !showTools },
-                onModels = onModels,
-                onSend = {
-                    val text = input.trim()
-                    if (text.isNotEmpty() && !thinking) {
-                        NexisSessionStore.addUserMessageOptimistically(text)
-                        input = ""
-                        scope.launch { NexisSessionStore.send(text) }
+            // The ONLY element that follows the keyboard. navigationBarsPadding() first,
+            // then imePadding(): the gesture/nav-bar inset isn't counted twice, and the
+            // whole bar (incl. the model pill) always stays fully on screen.
+            Column(Modifier.navigationBarsPadding().imePadding()) {
+                if (showTools) ToolRow(onClose = { showTools = false }, onFile = { showTools = false; pickFile.launch(arrayOf("*/*")) })
+                Composer(
+                    value = input,
+                    onValueChange = { input = it },
+                    onTools = { showTools = !showTools },
+                    onSend = {
+                        val text = input.trim()
+                        if (text.isNotEmpty() && !thinking) {
+                            NexisSessionStore.addUserMessageOptimistically(text)
+                            input = ""
+                            scope.launch { NexisSessionStore.send(text) }
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 }
@@ -103,24 +120,29 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
 // (not a Row) so centering holds regardless of how wide the two side
 // buttons are. No divider under the header either, matching the reference.
 @Composable private fun TopBar(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
+    // Compact bar: it owns the status-bar inset itself (Scaffold applies none) and
+    // never reacts to the keyboard, so it stays pinned while typing.
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 10.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         AssistantPill(onClick = onAssistant, modifier = Modifier.align(Alignment.Center))
         CircleIconButton(onClick = onOpenDrawer, modifier = Modifier.align(Alignment.CenterStart)) {
             MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
         }
-        // New-chat: chat-bubble-with-plus, as requested — clearly reads as
-        // "start a new conversation".
-        CircleIconButton(onClick = { NexisSessionStore.newChat() }, modifier = Modifier.align(Alignment.CenterEnd)) {
-            Icon(Icons.Outlined.AddComment, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(19.dp))
+        // New chat: a clean circle with a plus inside.
+        CircleIconButton(
+            onClick = { NexisSessionStore.newChat() },
+            modifier = Modifier.align(Alignment.CenterEnd),
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .55f))
+        ) {
+            Icon(Icons.Outlined.Add, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
         }
     }
 }
 
-@Composable private fun CircleIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Surface(onClick = onClick, modifier = modifier.size(40.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainer) {
+@Composable private fun CircleIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, border: BorderStroke? = null, content: @Composable () -> Unit) {
+    Surface(onClick = onClick, modifier = modifier.size(36.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainer, border = border) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
     }
 }
@@ -137,7 +159,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
         color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(1.dp, NexisPalette.Accent.copy(alpha = .28f))
     ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.KeyboardArrowDown, null, tint = NexisPalette.Accent, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(NexisSessionStore.selectedRole.title(), fontSize = 12.sp, color = NexisPalette.Accent, fontWeight = FontWeight.Medium)
@@ -193,9 +215,9 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
 
 // Input bar per the newest reference: one rounded card holding the text
 // field on top and a control row underneath — attach, the active-model
-// pill (English provider name, opens the models sheet), mic, and send.
+// pill (English provider name, opens a plain model dropdown), mic, and send.
 // Replaces the earlier separate-outer-circles layout.
-@Composable private fun Composer(value: String, onValueChange: (String) -> Unit, onTools: () -> Unit, onModels: () -> Unit, onSend: () -> Unit) {
+@Composable private fun Composer(value: String, onValueChange: (String) -> Unit, onTools: () -> Unit, onSend: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         shape = RoundedCornerShape(24.dp),
@@ -215,7 +237,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
             Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onTools, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, "إرفاق") }
                 Spacer(Modifier.width(2.dp))
-                ModelPill(onClick = onModels)
+                ModelPill()
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = {}, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.MicNone, "تسجيل صوتي", tint = MaterialTheme.colorScheme.onSurface) }
                 Spacer(Modifier.width(2.dp))
@@ -236,14 +258,30 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit, onModels: () -
 
 // Shows the model actually in use right now — the first entry in the
 // current role's fallback chain — by its plain English name (Claude,
-// ChatGPT, Gemini…), and opens the models sheet on tap.
-@Composable private fun ModelPill(onClick: () -> Unit) {
-    val provider = NexisSessionStore.chainFor(NexisSessionStore.selectedRole).firstOrNull() ?: "claude"
-    Surface(onClick = onClick, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(providerDisplayName(provider), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.width(3.dp))
-            Icon(Icons.Outlined.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
+// ChatGPT, Gemini…). Tapping it opens a plain dropdown to switch the active
+// model: names only — no API-key status, no checkmarks, no custom-model
+// button. Full model/key management lives only in the drawer's AI-models sheet.
+@Composable private fun ModelPill() {
+    val role = NexisSessionStore.selectedRole
+    val active = NexisSessionStore.chainFor(role).firstOrNull() ?: "claude"
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Surface(onClick = { expanded = true }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(providerDisplayName(active), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.width(3.dp))
+                Icon(Icons.Outlined.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            NexisSessionStore.providerIds.forEach { id ->
+                val selected = id == active
+                DropdownMenuItem(
+                    text = { Text(providerDisplayName(id), fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
+                    onClick = { NexisSessionStore.setActiveProvider(role, id); expanded = false },
+                    modifier = Modifier.background(if (selected) NexisPalette.Accent.copy(alpha = .10f) else Color.Transparent)
+                )
+            }
         }
     }
 }

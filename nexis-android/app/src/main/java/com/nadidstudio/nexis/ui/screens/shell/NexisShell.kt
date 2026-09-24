@@ -34,6 +34,10 @@ fun NexisShell(onLogout: () -> Unit = {}) {
 
         ModalNavigationDrawer(
             drawerState = drawerState,
+            // The drawer opens ONLY from the hamburger button (drawerState.open()).
+            // Swipe-from-edge is off while closed; gestures are enabled only once it
+            // is open so swipe-to-close and tapping the scrim still dismiss it.
+            gesturesEnabled = drawerState.isOpen,
             drawerContent = {
                 NexisDrawer(
                     onClose = { scope.launch { drawerState.close() } },
@@ -60,8 +64,7 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                 )
                 else -> ChatScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onAssistant = { sheet = "assistant" },
-                    onModels = { sheet = "models" }
+                    onAssistant = { sheet = "assistant" }
                 )
             }
         }

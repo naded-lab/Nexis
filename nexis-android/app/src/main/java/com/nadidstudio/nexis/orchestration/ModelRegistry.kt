@@ -5,6 +5,7 @@ import com.nadidstudio.nexis.models.AiModelAdapter
 import com.nadidstudio.nexis.models.ChatGptAdapter
 import com.nadidstudio.nexis.models.ClaudeAdapter
 import com.nadidstudio.nexis.models.GeminiAdapter
+import com.nadidstudio.nexis.models.KimiAdapter
 
 /**
  * Every provider Nexis knows about. "Custom" providers the user adds via
@@ -16,7 +17,8 @@ object ModelRegistry {
     private val adapters = mutableMapOf<String, AiModelAdapter>(
         "claude" to ClaudeAdapter(),
         "chatgpt" to ChatGptAdapter(),
-        "gemini" to GeminiAdapter()
+        "gemini" to GeminiAdapter(),
+        "kimi" to KimiAdapter()
         // "kimi" / "notebooklm" / custom models plug in the same way once
         // their adapters are written — nothing else in this file changes.
     )
@@ -38,7 +40,7 @@ object ModelRegistry {
      */
     fun defaultChainFor(role: AssistantRole): List<String> =
         when (role) {
-            AssistantRole.CODING -> listOf("claude", "chatgpt", "gemini")
-            AssistantRole.CHAT -> listOf("chatgpt", "claude", "gemini")
+            AssistantRole.CODING -> listOf("claude", "chatgpt", "gemini", "kimi", "local")
+            AssistantRole.CHAT -> listOf("chatgpt", "claude", "gemini", "local")
         }.take(5)
 }

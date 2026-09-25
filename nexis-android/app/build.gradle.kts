@@ -13,7 +13,27 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+
+        // Local on-device model (llama.cpp). arm64 only for now to keep the
+        // native build + APK small; covers virtually all modern phones.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+                arguments += "-DANDROID_STL=c++_shared"
+            }
+        }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+    ndkVersion = "26.3.11579264"
 
     buildTypes {
         release {
@@ -58,4 +78,9 @@ dependencies {
 
     // Encrypted local storage for API keys / tokens (Android Keystore)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Google Sign-In (Credential Manager)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 }

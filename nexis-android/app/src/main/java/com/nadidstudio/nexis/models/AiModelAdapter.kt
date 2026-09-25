@@ -242,3 +242,80 @@ private inline fun parseHttpOutcome(
         else -> AiCallResult.PermanentError(raw ?: "HTTP $code")
     }
 }
+
+/**
+ * Generic adapter for any OpenAI-compatible chat-completions endpoint.
+ * Used for KiMi (Moonshot) and for user-added custom models.
+ */
+open class OpenAiCompatibleAdapter(
+    override val providerId: String,
+    override val displayName: String,
+    private val baseUrl: String,
+    private val model: String,
+    private val client: okhttp3.OkHttpClient = okhttp3.OkHttpClient()
+) : AiModelAdapter {
+
+    override suspend fun send(prompt: String, key: ApiKeyEntry): AiCallResult =
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val body = org.json.JSONObject().apply {
+                    put("model", model)
+                    put(
+                        "messages",
+                        org.json.JSONArray().put(
+                            org.json.JSONObject().apply {
+                                put("role", "user")
+                                put("content", prompt)
+                            }
+                        )
+                    )
+                }
+                val request = okhttp3.Request.Builder()
+                    .url(baseUrl)
+                    .addHeader("Authorization", "Bearer ${key.keyValue}")
+                    .addHeader("content-type", "application/json")
+                    .post(
+                        okhttp3.RequestBody.create(
+                            "application/json; charset=utf-8".toMediaTypeOrNull(),
+                            body.toString()
+                        )
+                    )
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    val raw = response.body?.string()
+                    parseHttpOutcome(response.code, raw) { json ->
+                        json.getJSONArray("choices").getJSONObject(0)
+                            .getJSONObject("message").getString("content")
+                    }
+                }
+            } catch (e: java.io.IOException) {
+                AiCallResult.TransientError(e.message)
+            } catch (e: Exception) {
+                AiCallResult.PermanentError(e.message)
+            }
+        }
+}
+
+class KimiAdapter : OpenAiCompatibleAdapter(
+    providerId = "kimi",
+    displayName = "KiMi",
+    baseUrl = "https://api.moonshot.ai/v1/chat/completions",
+    model = "moonshot-v1-8k"
+)
+
+/**
+ * Local, fully on-device model (GGUF via llama.cpp). No API key, no network.
+ */
+class LocalModelAdapter(private val context: android.content.Context) : AiModelAdapter {
+    override val providerId = "local"
+    override val displayName = "Qwen (محلي)"
+
+    override suspend fun send(prompt: String, key: ApiKeyEntry): AiCallResult {
+        val info = com.nadidstudio.nexis.data.LocalModelStore.current(context)
+            ?: return AiCallResult.PermanentError("لم يتم اختيار ملف النموذج المحلي بعد")
+        val err = com.nadidstudio.nexis.engine.LocalLlamaEngine.ensureLoaded(context, info.uri)
+        if (err != null) return AiCallResult.PermanentError(err)
+        val text = com.nadidstudio.nexis.engine.LocalLlamaEngine.generate(prompt)
+        return if (text.isBlank()) AiCallResult.TransientError("رد فارغ من النموذج المحلي") else AiCallResult.Success(text)
+    }
+}

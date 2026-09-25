@@ -1,1 +1,8 @@
 *.patch
+build/
+.gradle/
+.idea/
+local.properties
+*.apk
+*.iml
+.DS_Store

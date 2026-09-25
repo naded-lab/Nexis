@@ -1,5 +1,6 @@
 package com.nadidstudio.nexis.ui.screens
 
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,7 +44,9 @@ fun providerDisplayName(providerId: String): String = when (providerId) {
     "claude" -> "Claude"
     "chatgpt" -> "ChatGPT"
     "gemini" -> "Gemini"
-    else -> providerId.replaceFirstChar { it.uppercase() }
+    "kimi" -> "KiMi"
+    "local" -> "Qwen (محلي)"
+    else -> ModelRegistry.adapterFor(providerId)?.displayName ?: providerId.replaceFirstChar { it.uppercase() }
 }
 
 @Composable
@@ -105,11 +109,15 @@ private fun AssistantSheetRow(role: AssistantRole, selected: AssistantRole, onSe
 @Composable
 fun ModelSheet(role: AssistantRole) {
     var keysDialogProvider by remember { mutableStateOf<String?>(null) }
+    var showAddCustom by remember { mutableStateOf(false) }
+    var refresh by remember { mutableIntStateOf(0) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)) {
             Text("نماذج الذكاء الاصطناعي", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 3.dp))
             Text("فعّل أو عطّل نموذجًا ضمن سلسلة ${role.title()}، وأدر مفاتيح API مباشرة", fontSize = 11.sp, color = NexisPalette.LightSecondary, modifier = Modifier.padding(bottom = 12.dp))
+            refresh.let { }
             ModelRegistry.allProviderIds().forEach { providerId ->
                 val keyCount = NexisSessionStore.keyStoreForSettings.getKeys(providerId).size
                 ModelSheetRow(
@@ -121,7 +129,7 @@ fun ModelSheet(role: AssistantRole) {
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Surface(onClick = { }, color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(15.dp)) {
+            Surface(onClick = { showAddCustom = true }, color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(15.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Add, null, Modifier.size(19.dp), tint = NexisPalette.Accent)
                     Spacer(Modifier.width(10.dp))
@@ -135,6 +143,74 @@ fun ModelSheet(role: AssistantRole) {
     val provider = keysDialogProvider
     if (provider != null) {
         ApiKeyDialog(providerId = provider, onDismiss = { keysDialogProvider = null })
+    }
+
+    if (showAddCustom) {
+        var name by remember { mutableStateOf("") }
+        var url by remember { mutableStateOf("https://") }
+        var model by remember { mutableStateOf("") }
+        var code by remember { mutableStateOf("") }
+        var err by remember { mutableStateOf<String?>(null) }
+        var busy by remember { mutableStateOf(false) }
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val isOpenRouter = url.contains("openrouter.ai")
+        AlertDialog(
+            onDismissRequest = { showAddCustom = false },
+            title = { Text("إضافة نموذج مخصص") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("أي خدمة متوافقة مع صيغة OpenAI (chat/completions)", fontSize = 11.sp, color = NexisPalette.Muted)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            name = "Groq"; url = "https://api.groq.com/openai/v1/chat/completions"; model = "llama-3.3-70b-versatile"
+                        }) { Text("Groq", fontSize = 12.sp) }
+                        OutlinedButton(onClick = {
+                            name = "OpenRouter"; url = "https://openrouter.ai/api/v1/chat/completions"; model = ""
+                        }) { Text("OpenRouter", fontSize = 12.sp) }
+                    }
+                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("الاسم") })
+                    OutlinedTextField(url, { url = it }, singleLine = true, label = { Text("رابط الـ endpoint") })
+                    OutlinedTextField(model, { model = it }, singleLine = true, label = { Text(if (isOpenRouter) "النموذج (اختر واحدًا ينتهي بـ :free)" else "اسم النموذج") })
+                    if (isOpenRouter) {
+                        OutlinedButton(onClick = {
+                            ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(com.nadidstudio.nexis.auth.OpenRouterAuth.startUrl())).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }) { Text("ربط حساب OpenRouter", fontSize = 12.sp) }
+                        OutlinedTextField(code, { code = it }, singleLine = true, label = { Text("الصق الكود الظاهر بالمتصفح (اختياري)") })
+                    }
+                    err?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !busy, onClick = {
+                    val id = com.nadidstudio.nexis.data.CustomModelStore.add(ctx, name, url, model) { err = it }
+                    if (id != null) {
+                        AssistantRole.entries.forEach { NexisSessionStore.toggleProvider(it, id, true) }
+                        refresh++
+                        if (isOpenRouter && code.isNotBlank()) {
+                            busy = true
+                            scope.launch {
+                                com.nadidstudio.nexis.auth.OpenRouterAuth.exchange(code).fold(
+                                    onSuccess = { key ->
+                                        NexisSessionStore.keyStoreForSettings.addKey(id, key)
+                                        refresh++
+                                        showAddCustom = false
+                                    },
+                                    onFailure = { e ->
+                                        err = "أُضيف النموذج، لكن الربط فشل: ${e.message}"
+                                        busy = false
+                                        keysDialogProvider = id
+                                    }
+                                )
+                            }
+                        } else {
+                            showAddCustom = false
+                            keysDialogProvider = id
+                        }
+                    }
+                }) { Text(if (busy) "..." else "إضافة") }
+            },
+            dismissButton = { TextButton(onClick = { showAddCustom = false }) { Text("إلغاء") } }
+        )
     }
 }
 

@@ -22,8 +22,21 @@ jobs:
         with:
           gradle-version: 8.9
 
+      - name: Install NDK + CMake
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "ndk;26.3.11579264" "cmake;3.22.1"
+
+      # First native build clones + compiles llama.cpp from source (FetchContent),
+      # which is slow — cache it so later pushes are fast and don't hit GitHub rate limits.
+      - name: Cache llama.cpp native build
+        uses: actions/cache@v4
+        with:
+          path: nexis-android/app/.cxx
+          key: llama-cxx-${{ runner.os }}-${{ hashFiles('nexis-android/app/src/main/cpp/CMakeLists.txt') }}
+
       - name: Build debug APK
-        run: gradle -p nexis-android assembleDebug
+        run: gradle -p nexis-android assembleDebug --info
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

@@ -130,13 +130,12 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
         CircleIconButton(onClick = onOpenDrawer, modifier = Modifier.align(Alignment.CenterStart)) {
             MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
         }
-        // New chat: a clean circle with a plus inside.
+        // New chat: square with a pencil sticking out of the top-right corner.
         CircleIconButton(
             onClick = { NexisSessionStore.newChat() },
-            modifier = Modifier.align(Alignment.CenterEnd),
-            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .55f))
+            modifier = Modifier.align(Alignment.CenterEnd)
         ) {
-            Icon(Icons.Outlined.Add, "محادثة جديدة", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+            NewChatGlyph(tint = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -167,17 +166,44 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 }
 
-// Three equal-width bars, evenly spaced — a single consistent glyph rather
-// than the previous tapered/hamburger look.
+// Two stacked bars: the top one is longer than the bottom one.
 @Composable private fun MenuGlyph(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(19.dp)) {
-        val strokeH = 2.dp.toPx()
+    Canvas(modifier = modifier.size(width = 20.dp, height = 14.dp)) {
+        val strokeH = 2.2.dp.toPx()
         val corner = CornerRadius(strokeH / 2f)
-        val gap = (size.height - strokeH * 3f) / 2f
-        repeat(3) { i ->
-            val y = i * (strokeH + gap)
-            drawRoundRect(color = tint, topLeft = Offset(0f, y), size = Size(size.width, strokeH), cornerRadius = corner)
+        val gap = size.height - strokeH * 2f
+        drawRoundRect(color = tint, topLeft = Offset(0f, 0f), size = Size(size.width, strokeH), cornerRadius = corner)
+        drawRoundRect(color = tint, topLeft = Offset(0f, strokeH + gap), size = Size(size.width * 0.6f, strokeH), cornerRadius = corner)
+    }
+}
+
+// New chat: a rounded square (open at the top-right corner) with a pencil
+// sticking out diagonally from that corner.
+@Composable private fun NewChatGlyph(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(20.dp)) {
+        val u = size.width / 20f
+        val sw = 1.7f * u
+        val box = androidx.compose.ui.graphics.Path().apply {
+            moveTo(11f * u, 3.5f * u)
+            lineTo(6f * u, 3.5f * u)
+            quadraticBezierTo(3.5f * u, 3.5f * u, 3.5f * u, 6f * u)
+            lineTo(3.5f * u, 14f * u)
+            quadraticBezierTo(3.5f * u, 16.5f * u, 6f * u, 16.5f * u)
+            lineTo(14f * u, 16.5f * u)
+            quadraticBezierTo(16.5f * u, 16.5f * u, 16.5f * u, 14f * u)
+            lineTo(16.5f * u, 10f * u)
         }
+        drawPath(box, tint, style = androidx.compose.ui.graphics.drawscope.Stroke(width = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        // pencil body
+        drawLine(tint, Offset(10.5f * u, 9.5f * u), Offset(16.8f * u, 3.2f * u), strokeWidth = 3f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        // pencil tip
+        val tip = androidx.compose.ui.graphics.Path().apply {
+            moveTo(8.2f * u, 11.8f * u)
+            lineTo(9.2f * u, 9.4f * u)
+            lineTo(10.6f * u, 10.8f * u)
+            close()
+        }
+        drawPath(tip, tint)
     }
 }
 

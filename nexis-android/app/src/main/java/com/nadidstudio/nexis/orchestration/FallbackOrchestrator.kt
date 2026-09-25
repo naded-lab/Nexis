@@ -34,16 +34,24 @@ class FallbackOrchestrator(
         role: AssistantRole,
         chain: List<String> = ModelRegistry.defaultChainFor(role)
     ): OrchestratedResult {
-        if (!networkMonitor.isOnline()) {
+        // The local on-device model needs no network and no API key, so it
+        // must not be blocked by an offline check the way remote providers are.
+        val online = networkMonitor.isOnline()
+        if (!online && chain.none { it == "local" }) {
             return OrchestratedResult.Offline()
         }
 
         val attemptLog = mutableListOf<String>()
 
         for (providerId in chain.take(5)) {
+            if (providerId != "local" && !online) continue
             val adapter = ModelRegistry.adapterFor(providerId) ?: continue
-            val keys = keyStore.getKeys(providerId).filter {
-                healthTracker.isUsable(providerId, it.id)
+            val keys = if (providerId == "local") {
+                listOf(com.nadidstudio.nexis.models.ApiKeyEntry("local", ""))
+            } else {
+                keyStore.getKeys(providerId).filter {
+                    healthTracker.isUsable(providerId, it.id)
+                }
             }
 
             for (key in keys) {

@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nadidstudio.nexis.backup.BackupState
+import com.nadidstudio.nexis.data.ProfileStore
 import com.nadidstudio.nexis.ui.session.NexisSessionStore
 import com.nadidstudio.nexis.ui.theme.AppearanceMode
 import com.nadidstudio.nexis.ui.theme.NexisAppearance
@@ -30,9 +31,12 @@ import com.nadidstudio.nexis.ui.theme.NexisPalette
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, onOpenLocalModel: () -> Unit = {}) {
     var keysDialogProvider by remember { mutableStateOf<String?>(null) }
     var showAccountSheet by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var profileName by remember { mutableStateOf(ProfileStore.name(ctx)) }
+    var showProfileEdit by remember { mutableStateOf(false) }
     var showAppearanceDialog by remember { mutableStateOf(false) }
     var showBackupDialog by remember { mutableStateOf(false) }
     var notificationsOn by remember { mutableStateOf(true) }
@@ -49,7 +53,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
             Spacer(Modifier.height(8.dp))
         }
 
-        item { ProfileCard(onClick = { showAccountSheet = true }) }
+        item { ProfileCard(name = profileName, onClick = { showAccountSheet = true }) }
 
         item { SectionTitle("عام") }
         item {
@@ -67,6 +71,8 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
         item { SectionTitle("التطوير") }
         item {
             SettingGroup {
+                SettingRow("النموذج المحلي", "Qwen GGUF من ذاكرة الهاتف", Icons.Outlined.Memory, onClick = onOpenLocalModel)
+                GroupDivider()
                 SettingRow("Termux", "ربط بيئة التطوير لاحقًا", Icons.Outlined.Terminal)
                 GroupDivider()
                 val connected = NexisSessionStore.keyStoreForSettings.hasAnyKey("github")
@@ -96,11 +102,23 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
             Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 22.dp)) {
                 Text("الحساب الشخصي", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 12.dp))
                 SettingGroup {
-                    // TODO: real profile-edit screen — not built yet.
-                    SettingRow("تعديل الملف الشخصي", "الاسم، الصورة، البيانات الأساسية", Icons.Outlined.Edit, onClick = { showAccountSheet = false })
+                    SettingRow("تعديل الملف الشخصي", "الاسم", Icons.Outlined.Edit, onClick = { showAccountSheet = false; showProfileEdit = true })
                 }
             }
         }
+    }
+
+    if (showProfileEdit) {
+        var draft by remember { mutableStateOf(profileName) }
+        AlertDialog(
+            onDismissRequest = { showProfileEdit = false },
+            title = { Text("تعديل الملف الشخصي") },
+            text = { OutlinedTextField(value = draft, onValueChange = { draft = it }, singleLine = true, label = { Text("الاسم") }) },
+            confirmButton = {
+                TextButton(onClick = { ProfileStore.setName(ctx, draft); profileName = draft.trim(); showProfileEdit = false }) { Text("حفظ") }
+            },
+            dismissButton = { TextButton(onClick = { showProfileEdit = false }) { Text("إلغاء") } }
+        )
     }
 
     if (showAppearanceDialog) {
@@ -165,7 +183,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
     }
 }
 
-@Composable private fun ProfileCard(onClick: () -> Unit) {
+@Composable private fun ProfileCard(name: String, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -179,7 +197,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
             ) { Icon(Icons.Outlined.Person, null, Modifier.size(28.dp), tint = Color.White) }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("الحساب الشخصي", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(if (name.isBlank()) "الحساب الشخصي" else name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Text("الاسم والصورة والبيانات", fontSize = 12.sp, color = subtleColor())
             }
         }

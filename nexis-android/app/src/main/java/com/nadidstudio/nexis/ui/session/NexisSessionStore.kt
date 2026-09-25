@@ -43,6 +43,8 @@ object NexisSessionStore {
     fun init(context: Context) {
         if (initialized) return
         InMemoryAppStore.attach(context)
+        com.nadidstudio.nexis.data.CustomModelStore.registerAll(context)
+        com.nadidstudio.nexis.orchestration.ModelRegistry.registerCustomAdapter(com.nadidstudio.nexis.models.LocalModelAdapter(context.applicationContext))
         InMemoryAppStore.savedChains.forEach { (roleName, chain) ->
             runCatching { AssistantRole.valueOf(roleName) }.getOrNull()?.let { roleChains[it] = chain }
         }

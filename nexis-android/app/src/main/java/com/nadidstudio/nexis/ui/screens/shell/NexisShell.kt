@@ -60,8 +60,10 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                 )
                 "settings" -> SettingsScreen(
                     onBack = { page = "chat" },
-                    onLogout = onLogout
+                    onLogout = onLogout,
+                    onOpenLocalModel = { page = "localmodel" }
                 )
+                "localmodel" -> com.nadidstudio.nexis.ui.screens.LocalModelScreen(onBack = { page = "settings" })
                 else -> ChatScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     onAssistant = { sheet = "assistant" }

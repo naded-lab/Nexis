@@ -61,7 +61,11 @@ fun NexisProjectListScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (role == AssistantRole.CODING) "Coding Projects" else "Chat Projects",
+                        when (role) {
+                            AssistantRole.CODING -> "Coding Projects"
+                            AssistantRole.CHAT -> "Chat Projects"
+                            AssistantRole.LOCAL -> "Local Projects"
+                        },
                         fontWeight = FontWeight.Bold
                     )
                 },

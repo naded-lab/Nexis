@@ -10,6 +10,7 @@ import com.nadidstudio.nexis.assistants.BaseAssistant
 import com.nadidstudio.nexis.assistants.ChatAssistant
 import com.nadidstudio.nexis.assistants.ChatMessage
 import com.nadidstudio.nexis.assistants.CodingAssistant
+import com.nadidstudio.nexis.assistants.LocalAssistant
 import com.nadidstudio.nexis.assistants.Conversation
 import com.nadidstudio.nexis.assistants.Project
 import com.nadidstudio.nexis.data.InMemoryAppStore
@@ -37,6 +38,7 @@ object NexisSessionStore {
     private lateinit var orchestrator: FallbackOrchestrator
     private lateinit var codingAssistant: CodingAssistant
     private lateinit var chatAssistant: ChatAssistant
+    private lateinit var localAssistant: LocalAssistant
     private var initialized = false
 
     /** Call once, e.g. from MainActivity.onCreate(applicationContext). Safe to call more than once. */
@@ -57,12 +59,16 @@ object NexisSessionStore {
         )
         codingAssistant = CodingAssistant(orchestrator)
         chatAssistant = ChatAssistant(orchestrator)
+        localAssistant = LocalAssistant(orchestrator)
         // Ensure there's always a project to land the "quick chat" in for each role.
         if (InMemoryAppStore.projectsFor(AssistantRole.CODING).isEmpty()) {
             InMemoryAppStore.createProject(AssistantRole.CODING, "محادثة سريعة")
         }
         if (InMemoryAppStore.projectsFor(AssistantRole.CHAT).isEmpty()) {
             InMemoryAppStore.createProject(AssistantRole.CHAT, "محادثة سريعة")
+        }
+        if (InMemoryAppStore.projectsFor(AssistantRole.LOCAL).isEmpty()) {
+            InMemoryAppStore.createProject(AssistantRole.LOCAL, "محادثة سريعة")
         }
         initialized = true
         openProject(InMemoryAppStore.projectsFor(AssistantRole.CODING).first())
@@ -76,6 +82,7 @@ object NexisSessionStore {
         }
         if (InMemoryAppStore.projectsFor(AssistantRole.CODING).isEmpty()) InMemoryAppStore.createProject(AssistantRole.CODING, "محادثة سريعة")
         if (InMemoryAppStore.projectsFor(AssistantRole.CHAT).isEmpty()) InMemoryAppStore.createProject(AssistantRole.CHAT, "محادثة سريعة")
+        if (InMemoryAppStore.projectsFor(AssistantRole.LOCAL).isEmpty()) InMemoryAppStore.createProject(AssistantRole.LOCAL, "محادثة سريعة")
         openProject(InMemoryAppStore.projectsFor(AssistantRole.CODING).first())
     }
 
@@ -183,7 +190,11 @@ object NexisSessionStore {
     /** Sends through the real fallback orchestrator; call from a coroutine scope. */
     suspend fun send(text: String) {
         val conversation = currentConversation ?: return
-        val assistant: BaseAssistant = if (selectedRole == AssistantRole.CODING) codingAssistant else chatAssistant
+        val assistant: BaseAssistant = when (selectedRole) {
+            AssistantRole.CODING -> codingAssistant
+            AssistantRole.CHAT -> chatAssistant
+            AssistantRole.LOCAL -> localAssistant
+        }
         sending = true
         lastError = null
         lastNotice = null

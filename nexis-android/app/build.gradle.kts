@@ -14,10 +14,13 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        // Local on-device model (llama.cpp). arm64 only for now to keep the
-        // native build + APK small; covers virtually all modern phones.
+        // Local on-device model (llama.cpp). Build for both 64-bit and
+        // 32-bit ARM: arm64-v8a alone caused "App not installed"
+        // (INSTALL_FAILED_NO_MATCHING_ABIS) on older/budget phones
+        // (e.g. Android 10 devices) that are still 32-bit-only.
         ndk {
             abiFilters += "arm64-v8a"
+            abiFilters += "armeabi-v7a"
         }
         externalNativeBuild {
             cmake {
@@ -35,7 +38,25 @@ android {
     }
     ndkVersion = "26.3.11579264"
 
+    // Fixed debug keystore committed to the repo (app/debug.keystore) so every
+    // CI build is signed with the SAME key. Without this, each GitHub Actions
+    // run generates a brand-new random debug key, and installing a new build
+    // over an older one fails with "App not installed" (signature mismatch)
+    // on any device that already has a previous build — which is exactly
+    // the "works on one phone, not the other" symptom.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
         }

@@ -22,15 +22,10 @@ jobs:
         with:
           gradle-version: 8.9
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-
       - name: Install NDK + CMake
         run: |
-          sdkmanager --licenses > /dev/null || true
-          sdkmanager "ndk;26.3.11579264" "cmake;3.22.1"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "ndk;26.3.11579264" "cmake;3.22.1"
 
       # First native build clones + compiles llama.cpp from source (FetchContent),
       # which is slow — cache it so later pushes are fast and don't hit GitHub rate limits.

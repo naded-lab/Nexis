@@ -32,11 +32,13 @@ import com.nadidstudio.nexis.ui.theme.NexisPalette
 fun AssistantRole.title(): String = when (this) {
     AssistantRole.CODING -> "مساعد البرمجة"
     AssistantRole.CHAT -> "المساعد العام"
+    AssistantRole.LOCAL -> "المساعد المحلي"
 }
 
 fun AssistantRole.subtitle(): String = when (this) {
     AssistantRole.CODING -> "تخطيط، بناء، تصحيح وشحن المشاريع"
     AssistantRole.CHAT -> "محادثة وأفكار ومساعدة يومية"
+    AssistantRole.LOCAL -> "يعمل بالكامل على جهازك، بدون إنترنت ولا مفاتيح"
 }
 
 /** Display name for a provider id (falls back to the id itself for a custom-added model). */
@@ -118,7 +120,7 @@ fun ModelSheet(role: AssistantRole) {
             Text("نماذج الذكاء الاصطناعي", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 3.dp))
             Text("فعّل أو عطّل نموذجًا ضمن سلسلة ${role.title()}، وأدر مفاتيح API مباشرة", fontSize = 11.sp, color = NexisPalette.LightSecondary, modifier = Modifier.padding(bottom = 12.dp))
             refresh.let { }
-            ModelRegistry.allProviderIds().forEach { providerId ->
+            ModelRegistry.allProviderIds().filter { it != "local" }.forEach { providerId ->
                 val keyCount = NexisSessionStore.keyStoreForSettings.getKeys(providerId).size
                 ModelSheetRow(
                     providerId = providerId,

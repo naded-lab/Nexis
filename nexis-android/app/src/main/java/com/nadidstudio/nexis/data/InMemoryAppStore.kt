@@ -34,7 +34,7 @@ object InMemoryAppStore {
     fun restoreFromJson(json: String) {
         val p = persistence ?: return
         p.replaceRaw(json)
-        codingProjects.clear(); chatProjects.clear(); savedChains.clear()
+        codingProjects.clear(); chatProjects.clear(); localProjects.clear(); savedChains.clear()
         p.load()?.let { state ->
             state.projects.forEach { proj -> listFor(proj.assistantRole).add(proj) }
             savedChains.putAll(state.chains)
@@ -43,15 +43,19 @@ object InMemoryAppStore {
 
     /** Writes the current state to disk. Call after any change (project, conversation, message, chain). */
     fun persist() {
-        persistence?.save(PersistedState(codingProjects.toList() + chatProjects.toList(), savedChains.toMap()))
+        persistence?.save(PersistedState(codingProjects.toList() + chatProjects.toList() + localProjects.toList(), savedChains.toMap()))
         com.nadidstudio.nexis.backup.GitHubBackup.onChanged()
     }
 
     val codingProjects = mutableStateListOf<Project>()
     val chatProjects = mutableStateListOf<Project>()
+    val localProjects = mutableStateListOf<Project>()
 
-    private fun listFor(role: AssistantRole) =
-        if (role == AssistantRole.CODING) codingProjects else chatProjects
+    private fun listFor(role: AssistantRole) = when (role) {
+        AssistantRole.CODING -> codingProjects
+        AssistantRole.CHAT -> chatProjects
+        AssistantRole.LOCAL -> localProjects
+    }
 
     fun projectsFor(role: AssistantRole): List<Project> = listFor(role)
 
@@ -63,7 +67,7 @@ object InMemoryAppStore {
     }
 
     fun findProject(projectId: String): Project? =
-        (codingProjects + chatProjects).find { it.id == projectId }
+        (codingProjects + chatProjects + localProjects).find { it.id == projectId }
 
     fun createConversation(project: Project): Conversation {
         val conversation = Conversation(id = UUID.randomUUID().toString(), projectId = project.id)

@@ -2,10 +2,12 @@ package com.nadidstudio.nexis.assistants
 
 import androidx.compose.runtime.mutableStateListOf
 
-/** MVP scope: only these two ship in the first version. */
+/** LOCAL is the fully offline, on-device assistant — kept separate from
+ *  CODING/CHAT on purpose so it never mixes with API-key-based models. */
 enum class AssistantRole {
     CODING,
-    CHAT
+    CHAT,
+    LOCAL
 }
 
 data class ChatMessage(

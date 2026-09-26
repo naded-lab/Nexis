@@ -40,7 +40,8 @@ object ModelRegistry {
      */
     fun defaultChainFor(role: AssistantRole): List<String> =
         when (role) {
-            AssistantRole.CODING -> listOf("claude", "chatgpt", "gemini", "kimi", "local")
-            AssistantRole.CHAT -> listOf("chatgpt", "claude", "gemini", "local")
+            AssistantRole.CODING -> listOf("claude", "chatgpt", "gemini", "kimi")
+            AssistantRole.CHAT -> listOf("chatgpt", "claude", "gemini")
+            AssistantRole.LOCAL -> listOf("local")
         }.take(5)
 }

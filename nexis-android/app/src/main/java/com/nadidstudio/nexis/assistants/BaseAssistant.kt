@@ -68,3 +68,11 @@ class ChatAssistant(
     override val systemPromptPrefix =
         "You are Nexis's general chat assistant for plain, casual conversation."
 }
+
+/** Fully offline, on-device (llama.cpp/GGUF). Always uses the "local" provider only — never mixed with API-key models. */
+class LocalAssistant(
+    orchestrator: FallbackOrchestrator
+) : BaseAssistant(AssistantRole.LOCAL, orchestrator) {
+    override val systemPromptPrefix =
+        "You are Nexis's local, fully offline assistant running on the user's own device."
+}

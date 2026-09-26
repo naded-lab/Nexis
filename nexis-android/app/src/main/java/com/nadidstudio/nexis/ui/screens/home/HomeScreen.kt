@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -94,6 +95,13 @@ fun NexisHomeScreen(
                 subtitle = "Plain, casual conversation — no coding or study framing.",
                 icon = Icons.Filled.Chat,
                 onClick = { onOpenAssistant(AssistantRole.CHAT) }
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            AssistantCard(
+                title = "Local Assistant",
+                subtitle = "Fully offline, on-device — no internet, no API keys.",
+                icon = Icons.Filled.PhoneAndroid,
+                onClick = { onOpenAssistant(AssistantRole.LOCAL) }
             )
         }
     }

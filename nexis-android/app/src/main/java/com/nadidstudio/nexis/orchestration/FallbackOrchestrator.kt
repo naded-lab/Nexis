@@ -5,6 +5,8 @@ import com.nadidstudio.nexis.head.ModelHealthTracker
 import com.nadidstudio.nexis.head.NetworkMonitor
 import com.nadidstudio.nexis.models.AiCallResult
 import com.nadidstudio.nexis.security.SecureKeyStore
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** What the caller (an assistant) ultimately gets back. */
 sealed class OrchestratedResult {
@@ -55,24 +57,25 @@ class FallbackOrchestrator(
             }
 
             for (key in keys) {
+                coroutineContext.ensureActive() // Stop button: never start another attempt once cancelled
                 when (val result = adapter.send(prompt, key)) {
                     is AiCallResult.Success -> {
                         healthTracker.markWorking(providerId, key.id)
                         return OrchestratedResult.Success(result.text, providerId)
                     }
                     is AiCallResult.QuotaExceeded -> {
-                        attemptLog.add("$providerId ← الحصة انتهت (429) ${result.raw.orEmpty().take(140)}")
+                        attemptLog.add("${adapter.displayName} ← ${result.raw.orEmpty().ifBlank { "تم تجاوز حصة الاستخدام" }.take(140)}")
                         healthTracker.markQuotaExceeded(providerId, key.id)
                         // fall through to the next key for this same provider
                     }
                     is AiCallResult.TransientError -> {
-                        attemptLog.add("$providerId ← ${result.raw.orEmpty().take(140)}")
+                        attemptLog.add("${adapter.displayName} ← ${result.raw.orEmpty().take(140)}")
                         healthTracker.markServerDown(providerId, key.id)
                         // provider-side hiccup — also move on for now; a later
                         // pass can add a short retry-before-skip here
                     }
                     is AiCallResult.PermanentError -> {
-                        attemptLog.add("$providerId ← ${result.raw.orEmpty().take(140)}")
+                        attemptLog.add("${adapter.displayName} ← ${result.raw.orEmpty().take(140)}")
                         healthTracker.markInvalid(providerId, key.id)
                         // bad key — never retried automatically, per design
                     }

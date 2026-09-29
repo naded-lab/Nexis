@@ -1,6 +1,11 @@
 package com.nadidstudio.nexis.ui.screens.shell
 
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -31,6 +36,7 @@ fun NexisShell(onLogout: () -> Unit = {}) {
         val scope = rememberCoroutineScope()
         var page by remember { mutableStateOf("chat") }
         var sheet by remember { mutableStateOf<String?>(null) }
+        var returnTo by remember { mutableStateOf("settings") }
 
         ModalNavigationDrawer(
             drawerState = drawerState,
@@ -44,6 +50,9 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                     onChat = { page = "chat"; scope.launch { drawerState.close() } },
                     onProjects = { page = "projects"; scope.launch { drawerState.close() } },
                     onSettings = { page = "settings"; scope.launch { drawerState.close() } },
+                    onSearch = { page = "search"; scope.launch { drawerState.close() } },
+                    onFiles = { page = "files"; scope.launch { drawerState.close() } },
+                    onTools = { page = "tools"; scope.launch { drawerState.close() } },
                     onPlugins = {
                         // TODO: real "plugins/add-ons" install screen — not built yet.
                         scope.launch { drawerState.close() }
@@ -62,9 +71,24 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                 "settings" -> SettingsScreen(
                     onBack = { page = "chat" },
                     onLogout = onLogout,
-                    onOpenLocalModel = { page = "localmodel" }
+                    onOpenLocalModel = { returnTo = "settings"; page = "localmodel" },
+                    onOpenModels = { sheet = "models" },
+                    onOpenBackup = { returnTo = "settings"; page = "backup" },
+                    onOpenStorage = { page = "storage" }
                 )
-                "localmodel" -> com.nadidstudio.nexis.ui.screens.LocalModelScreen(onBack = { page = "settings" })
+                "storage" -> com.nadidstudio.nexis.ui.screens.StorageScreen(onBack = { page = "settings" })
+                "search" -> com.nadidstudio.nexis.ui.screens.SearchScreen(onBack = { page = "chat" }, onOpenChat = { page = "chat" })
+                "files" -> com.nadidstudio.nexis.ui.screens.FilesScreen(onBack = { page = "chat" })
+                "tools" -> com.nadidstudio.nexis.ui.screens.ToolsScreen(
+                    onBack = { page = "chat" },
+                    onOpenSearch = { page = "search" },
+                    onOpenFiles = { page = "files" },
+                    onOpenProjects = { page = "projects" },
+                    onOpenLocalModel = { returnTo = "tools"; page = "localmodel" },
+                    onOpenBackup = { returnTo = "tools"; page = "backup" }
+                )
+                "backup" -> com.nadidstudio.nexis.ui.screens.BackupScreen(onBack = { page = returnTo })
+                "localmodel" -> com.nadidstudio.nexis.ui.screens.LocalModelScreen(onBack = { page = returnTo })
                 else -> ChatScreen(
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     onAssistant = { sheet = "assistant" }
@@ -96,3 +120,4 @@ fun NexisShell(onLogout: () -> Unit = {}) {
         }
     }
 }
+

@@ -29,11 +29,11 @@ object NexisPalette {
 
     val DarkBackground = Color(0xFF0B0F0D)
     val DarkSurface = Color(0xFF151B19)
-    val DarkSurfaceAlt = Color(0xFF1E2624)
+    val DarkSurfaceAlt = Color(0xFF212A28)
     val DarkText = Color(0xFFECEFED)
     val DarkSecondary = Color(0xFF9CA6A1)
     val DarkMuted = Color(0xFF66716C)
-    val DarkBorder = Color(0xFF232B29)
+    val DarkBorder = Color(0xFF2B3532)
 
     /** Alias so screens can use one name regardless of theme (matches uploaded UI's usage). */
     val Muted: Color get() = LightMuted
@@ -52,6 +52,9 @@ private val LightColors = lightColorScheme(
     onSurface = NexisPalette.LightText,
     surfaceContainer = NexisPalette.LightSurface,
     surfaceContainerHigh = NexisPalette.LightSurfaceAlt,
+    onSurfaceVariant = NexisPalette.LightSecondary,
+    surfaceVariant = NexisPalette.LightSurfaceAlt,
+    surfaceContainerHighest = NexisPalette.LightSurfaceAlt,
     outline = NexisPalette.LightBorder,
     outlineVariant = NexisPalette.LightBorder
 )
@@ -69,7 +72,14 @@ private val DarkColors = darkColorScheme(
     onSurface = NexisPalette.DarkText,
     surfaceContainer = NexisPalette.DarkSurface,
     surfaceContainerHigh = NexisPalette.DarkSurfaceAlt,
-    outline = NexisPalette.DarkBorder,
+    onSurfaceVariant = NexisPalette.DarkSecondary,
+    surfaceVariant = NexisPalette.DarkSurfaceAlt,
+    surfaceContainerHighest = Color(0xFF283230),
+    error = Color(0xFFE5695F),
+    onError = Color.White,
+    errorContainer = Color(0xFF3A1F1C),
+    onErrorContainer = Color(0xFFFFDAD6),
+    outline = NexisPalette.DarkMuted,
     outlineVariant = NexisPalette.DarkBorder
 )
 

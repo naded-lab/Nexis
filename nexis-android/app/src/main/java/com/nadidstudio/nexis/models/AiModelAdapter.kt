@@ -1,5 +1,6 @@
 package com.nadidstudio.nexis.models
 
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 
@@ -86,14 +87,15 @@ class ClaudeAdapter(
                     )
                     .build()
 
-                client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string()
-                    parseHttpOutcome(response.code, raw) { json ->
+                client.await(request).let { (code, raw) ->
+                    parseHttpOutcome(code, raw) { json ->
                         json.getJSONArray("content").getJSONObject(0).getString("text")
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: java.io.IOException) {
-                AiCallResult.TransientError(e.message)
+                AiCallResult.TransientError("تعذّر الاتصال بالمزوّد")
             } catch (e: Exception) {
                 AiCallResult.PermanentError(e.message)
             }
@@ -138,17 +140,18 @@ class ChatGptAdapter(
                     )
                     .build()
 
-                client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string()
-                    parseHttpOutcome(response.code, raw) { json ->
+                client.await(request).let { (code, raw) ->
+                    parseHttpOutcome(code, raw) { json ->
                         json.getJSONArray("choices")
                             .getJSONObject(0)
                             .getJSONObject("message")
                             .getString("content")
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: java.io.IOException) {
-                AiCallResult.TransientError(e.message)
+                AiCallResult.TransientError("تعذّر الاتصال بالمزوّد")
             } catch (e: Exception) {
                 AiCallResult.PermanentError(e.message)
             }
@@ -158,6 +161,10 @@ class ChatGptAdapter(
 /**
  * Gemini adapter — calls the Google AI Studio generateContent endpoint
  * (the free-tier API the user is starting with, per current plan).
+ *
+ * Model IDs are tried in order; if Google reports one as retired / not
+ * available, the next one is used automatically so a renamed model never
+ * breaks the assistant again.
  */
 class GeminiAdapter(
     private val client: okhttp3.OkHttpClient = okhttp3.OkHttpClient()
@@ -165,7 +172,19 @@ class GeminiAdapter(
     override val providerId = "gemini"
     override val displayName = "Gemini"
 
-    override suspend fun send(prompt: String, key: ApiKeyEntry): AiCallResult =
+    private val modelIds = listOf("gemini-3.5-flash", "gemini-3.5-flash-lite")
+
+    override suspend fun send(prompt: String, key: ApiKeyEntry): AiCallResult {
+        var last: AiCallResult = AiCallResult.PermanentError("النموذج غير متاح حاليًا لدى المزوّد")
+        for (model in modelIds) {
+            val r = callModel(model, prompt, key)
+            if (r !is AiCallResult.PermanentError || !r.raw.orEmpty().contains("غير متاح")) return r
+            last = r
+        }
+        return last
+    }
+
+    private suspend fun callModel(model: String, prompt: String, key: ApiKeyEntry): AiCallResult =
         withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val body = org.json.JSONObject().apply {
@@ -184,11 +203,8 @@ class GeminiAdapter(
                     )
                 }
 
-                val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-                    "gemini-2.5-flash:generateContent"
-
                 val request = okhttp3.Request.Builder()
-                    .url(url)
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
                     .addHeader("content-type", "application/json")
                     .addHeader("x-goog-api-key", key.keyValue.trim())
                     .post(
@@ -199,23 +215,74 @@ class GeminiAdapter(
                     )
                     .build()
 
-                client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string()
-                    parseHttpOutcome(response.code, raw) { json ->
-                        json.getJSONArray("candidates")
+                client.await(request).let { (code, raw) ->
+                    parseHttpOutcome(code, raw) { json ->
+                        val parts = json.getJSONArray("candidates")
                             .getJSONObject(0)
                             .getJSONObject("content")
                             .getJSONArray("parts")
-                            .getJSONObject(0)
-                            .getString("text")
+                        buildString {
+                            for (i in 0 until parts.length()) {
+                                val part = parts.getJSONObject(i)
+                                if (!part.optBoolean("thought", false)) append(part.optString("text"))
+                            }
+                        }.ifBlank { throw IllegalStateException("empty") }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: java.io.IOException) {
-                AiCallResult.TransientError(e.message)
+                AiCallResult.TransientError("تعذّر الاتصال بالمزوّد")
             } catch (e: Exception) {
                 AiCallResult.PermanentError(e.message)
             }
         }
+}
+
+/**
+ * Runs an OkHttp call so that cancelling the coroutine (the Stop button)
+ * really cancels the underlying HTTP request instead of letting it run on.
+ */
+private suspend fun okhttp3.OkHttpClient.await(request: okhttp3.Request): Pair<Int, String?> =
+    suspendCancellableCoroutine { cont ->
+        val call = newCall(request)
+        cont.invokeOnCancellation { runCatching { call.cancel() } }
+        call.enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                if (cont.isActive) cont.resumeWith(Result.failure(e))
+            }
+            override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+                response.use {
+                    val out = try { it.code to it.body?.string() } catch (e: java.io.IOException) {
+                        if (cont.isActive) cont.resumeWith(Result.failure(e)); return
+                    }
+                    if (cont.isActive) cont.resumeWith(Result.success(out))
+                }
+            }
+        })
+    }
+
+/** Pulls a short human message out of a provider's JSON error body (never returns raw JSON). */
+internal fun friendlyApiError(code: Int, raw: String?): String {
+    val fromJson = runCatching {
+        val j = org.json.JSONObject(raw ?: "")
+        when (val e = j.opt("error")) {
+            is org.json.JSONObject -> e.optString("message").ifBlank { e.optString("status") }
+            is String -> e
+            else -> j.optString("message")
+        }
+    }.getOrNull().orEmpty().replace(Regex("\\s+"), " ").trim()
+    val low = fromJson.lowercase()
+    return when {
+        code == 404 || "no longer available" in low || "not found" in low || "deprecated" in low ->
+            "النموذج غير متاح حاليًا لدى المزوّد (HTTP $code)"
+        code == 400 && ("api key" in low || "api_key" in low) -> "مفتاح API غير صالح"
+        code == 401 || code == 403 -> "المفتاح غير صالح أو لا يملك صلاحية (HTTP $code)"
+        code == 429 -> "تم تجاوز حصة الاستخدام (HTTP 429)"
+        code in 500..599 -> "خطأ مؤقت من خادم المزوّد (HTTP $code)"
+        fromJson.isNotBlank() -> fromJson.take(140)
+        else -> "خطأ غير متوقع (HTTP $code)"
+    }
 }
 
 /**
@@ -234,13 +301,13 @@ private inline fun parseHttpOutcome(
             try {
                 AiCallResult.Success(extractText(org.json.JSONObject(raw)))
             } catch (e: Exception) {
-                AiCallResult.PermanentError("Unexpected response shape: ${e.message}")
+                AiCallResult.PermanentError("رد غير متوقع من المزوّد")
             }
         }
-        code == 401 || code == 403 -> AiCallResult.PermanentError("Invalid/unauthorized key (HTTP $code)")
-        code == 429 -> AiCallResult.QuotaExceeded(raw)
-        code in 500..599 -> AiCallResult.TransientError(raw)
-        else -> AiCallResult.PermanentError(raw ?: "HTTP $code")
+        code == 401 || code == 403 -> AiCallResult.PermanentError(friendlyApiError(code, raw))
+        code == 429 -> AiCallResult.QuotaExceeded(friendlyApiError(code, raw))
+        code in 500..599 -> AiCallResult.TransientError(friendlyApiError(code, raw))
+        else -> AiCallResult.PermanentError(friendlyApiError(code, raw))
     }
 }
 
@@ -282,15 +349,16 @@ open class OpenAiCompatibleAdapter(
                         )
                     )
                     .build()
-                client.newCall(request).execute().use { response ->
-                    val raw = response.body?.string()
-                    parseHttpOutcome(response.code, raw) { json ->
+                client.await(request).let { (code, raw) ->
+                    parseHttpOutcome(code, raw) { json ->
                         json.getJSONArray("choices").getJSONObject(0)
                             .getJSONObject("message").getString("content")
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: java.io.IOException) {
-                AiCallResult.TransientError(e.message)
+                AiCallResult.TransientError("تعذّر الاتصال بالمزوّد")
             } catch (e: Exception) {
                 AiCallResult.PermanentError(e.message)
             }

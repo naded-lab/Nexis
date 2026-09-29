@@ -25,6 +25,7 @@ import com.nadidstudio.nexis.orchestration.FallbackOrchestrator
 import com.nadidstudio.nexis.orchestration.ModelRegistry
 import com.nadidstudio.nexis.orchestration.OrchestratedResult
 import com.nadidstudio.nexis.security.SecureKeyStore
+import com.nadidstudio.nexis.ui.screens.providerDisplayName
 
 /** UI-facing chat bubble — same shape the ChatScreen design already expects. */
 data class UiMessage(val fromUser: Boolean, val text: String, val time: String, val index: Int = -1)
@@ -48,6 +49,7 @@ object NexisSessionStore {
 
     /** Call once, e.g. from MainActivity.onCreate(applicationContext). Safe to call more than once. */
     fun init(context: Context) {
+        com.nadidstudio.nexis.data.AssistantPrefs.attach(context)
         if (initialized) return
         InMemoryAppStore.attach(context)
         com.nadidstudio.nexis.data.CustomModelStore.registerAll(context)
@@ -121,7 +123,11 @@ object NexisSessionStore {
     /** Sends outlive whichever screen started them (leaving the chat used to cancel
      *  the coroutine and leave the "sending" flag stuck forever). */
     private val jobs = mutableMapOf<String, kotlinx.coroutines.Job>()
-    private val stopped = mutableSetOf<String>()
+    private val stopped: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    /** Text already produced at the moment Stop was pressed — kept in the chat. */
+    private val stopSnapshots = mutableMapOf<String, String?>()
+    /** Conversations whose current request may run on the on-device model. */
+    private val localIds = mutableSetOf<String>()
     private val revealIds = mutableStateListOf<String>()
 
     /** Reply text produced so far, per conversation (real tokens for the local model, typed-out for remote ones). */
@@ -168,13 +174,15 @@ object NexisSessionStore {
     }
 
     val keyStoreForSettings: SecureKeyStore get() = keyStore
-    val providerIds: List<String> get() = ModelRegistry.allProviderIds()
+    /** Cloud (API-key) providers only — the on-device model is its own assistant and never mixes in. */
+    val providerIds: List<String> get() = ModelRegistry.allProviderIds().filter { it != "local" }
 
     /** Per-assistant-role model chain, filtered by the toggle in Settings/model picker. */
     private val roleChains = mutableStateMapOf<AssistantRole, List<String>>()
 
     fun chainFor(role: AssistantRole): List<String> =
-        roleChains[role] ?: ModelRegistry.defaultChainFor(role)
+        if (role == AssistantRole.LOCAL) listOf("local")
+        else (roleChains[role] ?: ModelRegistry.defaultChainFor(role)).filterNot { it == "local" }
 
     fun isProviderEnabled(role: AssistantRole, providerId: String): Boolean =
         chainFor(role).contains(providerId)
@@ -193,6 +201,7 @@ object NexisSessionStore {
 
     /** Makes [providerId] the active (first) model of this role's chain; the others stay as fallbacks. */
     fun setActiveProvider(role: AssistantRole, providerId: String) {
+        if (role == AssistantRole.LOCAL || providerId == "local") return
         roleChains[role] = (listOf(providerId) + chainFor(role).filterNot { it == providerId }).take(5)
         InMemoryAppStore.savedChains[role.name] = roleChains[role] ?: emptyList()
         InMemoryAppStore.persist()
@@ -253,17 +262,29 @@ object NexisSessionStore {
         sendingIds.add(id)
         lastError = null
         lastNotice = null
+        val usesLocal = "local" in chain
+        if (usesLocal) localIds.add(id)
         val job = appScope.launch {
             var error: String? = null
+            var notice: String? = null
             try {
-                if (role == AssistantRole.LOCAL) {
-                    com.nadidstudio.nexis.engine.LocalLlamaEngine.partialListener = { streamingTexts[id] = it }
+                if (usesLocal) {
+                    // Live tokens from the native side (any thread); ignored once Stop was pressed.
+                    com.nadidstudio.nexis.engine.LocalLlamaEngine.partialListener = { t -> if (id !in stopped) streamingTexts[id] = t }
                 }
                 when (val result = assistant.sendMessage(conversation, text, chain)) {
-                    is OrchestratedResult.Success -> if (role != AssistantRole.LOCAL) reveal(conversation, result.text)
+                    is OrchestratedResult.Success -> {
+                        // Local replies were already streamed token by token; remote ones are typed out.
+                        if (result.providerId != "local") reveal(conversation, result.text)
+                        val wanted = chain.firstOrNull()
+                        if (wanted != null && wanted != result.providerId) {
+                            notice = "تعذّر ${providerDisplayName(wanted)} — أجاب ${providerDisplayName(result.providerId)}"
+                        }
+                    }
                     is OrchestratedResult.Offline -> error = "لا يوجد اتصال بالإنترنت"
                     is OrchestratedResult.AllModelsFailed -> {
-                        val detail = result.attempts.lastOrNull { it.contains("←") }
+                        // Report the model the user actually picked (first attempt), not the last fallback tried.
+                        val detail = result.attempts.firstOrNull { it.contains("←") }
                         error = when {
                             result.attempts.isEmpty() -> "لا يوجد مفتاح API لأي نموذج مفعّل — أضف مفتاحًا من الإعدادات أو اختر النموذج المحلي"
                             detail != null -> "فشل النموذج — $detail"
@@ -273,10 +294,13 @@ object NexisSessionStore {
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 stopped.add(id)
+                keepPartialReply(conversation, stopSnapshots[id] ?: streamingTexts[id])
             } catch (e: Throwable) {
                 error = "خطأ غير متوقع: ${e.message ?: e.javaClass.simpleName}"
             } finally {
-                if (role == AssistantRole.LOCAL) com.nadidstudio.nexis.engine.LocalLlamaEngine.partialListener = null
+                if (usesLocal) com.nadidstudio.nexis.engine.LocalLlamaEngine.partialListener = null
+                localIds.remove(id)
+                stopSnapshots.remove(id)
                 streamingTexts.remove(id)
                 revealIds.remove(id)
                 sendingIds.remove(id)
@@ -288,6 +312,7 @@ object NexisSessionStore {
             // Only touch the visible chat if the user is still looking at this conversation.
             if (currentConversation?.id == id) {
                 lastError = if (wasStopped) null else error
+                lastNotice = if (wasStopped) null else notice
                 syncMessagesFromConversation()
             }
         }
@@ -308,13 +333,31 @@ object NexisSessionStore {
         }
     }
 
-    /** Stop button: the local model keeps what it already wrote; remote calls are simply dropped. */
+    /**
+     * Stop button: really cancels the running work — the HTTP request (cloud), the
+     * native generation loop (local) and the typing reveal — keeps whatever text was
+     * already produced, and stops any further token updates for this conversation.
+     */
     fun stop() {
         val id = currentConversation?.id ?: return
         if (id !in sendingIds) return
-        stopped.add(id)
-        if (selectedRole == AssistantRole.LOCAL) com.nadidstudio.nexis.engine.LocalLlamaEngine.abort()
-        else jobs[id]?.cancel()
+        stopped.add(id)                       // blocks any late token/update immediately
+        stopSnapshots[id] = streamingTexts[id]
+        if (id in localIds) com.nadidstudio.nexis.engine.LocalLlamaEngine.abort()
+        jobs[id]?.cancel()
+    }
+
+    /** Keeps the already-generated part of an interrupted reply inside the conversation. */
+    private fun keepPartialReply(c: Conversation, partial: String?) {
+        val text = partial?.trim().orEmpty()
+        val last = c.messages.lastOrNull() ?: return
+        if (last.role == "assistant" && c.id in revealIds) {
+            // Remote reply was fully stored but only partly "typed" — keep just the typed part.
+            c.messages.removeAt(c.messages.lastIndex)
+            if (text.isNotEmpty()) c.messages.add(ChatMessage(role = "assistant", text = text))
+        } else if (last.role == "user" && text.isNotEmpty()) {
+            c.messages.add(ChatMessage(role = "assistant", text = text))
+        }
     }
 
     /** Re-asks the last question (drops the last answer). */
@@ -359,6 +402,14 @@ object NexisSessionStore {
             currentConversation = project.conversations.lastOrNull() ?: InMemoryAppStore.createConversation(project)
             lastError = null
             syncMessagesFromConversation()
+        }
+        InMemoryAppStore.persist(); listVersion++
+    }
+
+    /** Deletes every saved conversation in every project (files and projects are kept). */
+    fun deleteAllConversations() {
+        (InMemoryAppStore.codingProjects + InMemoryAppStore.chatProjects + InMemoryAppStore.localProjects).forEach { p ->
+            p.conversations.toList().forEach { deleteConversation(p, it) }
         }
         InMemoryAppStore.persist(); listVersion++
     }

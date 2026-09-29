@@ -3,6 +3,7 @@ package com.nadidstudio.nexis.ui.screens
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,7 +33,7 @@ import com.nadidstudio.nexis.ui.theme.NexisPalette
 fun AssistantRole.title(): String = when (this) {
     AssistantRole.CODING -> "مساعد البرمجة"
     AssistantRole.CHAT -> "المساعد العام"
-    AssistantRole.LOCAL -> "المساعد المحلي"
+    AssistantRole.LOCAL -> "مساعد ONX"
 }
 
 fun AssistantRole.subtitle(): String = when (this) {
@@ -75,6 +76,7 @@ fun AssistantSheet(selected: AssistantRole, onSelect: (AssistantRole) -> Unit) {
             Text("اختيار المساعد", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 12.dp))
             AssistantSheetRow(AssistantRole.CODING, selected, onSelect)
             AssistantSheetRow(AssistantRole.CHAT, selected, onSelect)
+            AssistantSheetRow(AssistantRole.LOCAL, selected, onSelect)
             Spacer(Modifier.height(22.dp))
         }
     }
@@ -88,7 +90,71 @@ private fun AssistantSheetRow(role: AssistantRole, selected: AssistantRole, onSe
         // then the name+description block, then the checkmark last (left edge).
         Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(38.dp).background(if (active) NexisPalette.Accent else MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                Icon(if (role == AssistantRole.CODING) Icons.Outlined.Code else Icons.Outlined.ChatBubbleOutline, null, tint = if (active) Color.White else NexisPalette.Accent, modifier = Modifier.size(19.dp))
+                Icon(when (role) { AssistantRole.CODING -> Icons.Outlined.Code; AssistantRole.CHAT -> Icons.Outlined.ChatBubbleOutline; AssistantRole.LOCAL -> Icons.Outlined.PhoneAndroid }, null, tint = if (active) Color.White else NexisPalette.Accent, modifier = Modifier.size(19.dp))
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text(role.title(), fontSize = 13.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
+                Text(role.subtitle(), fontSize = 10.sp, color = NexisPalette.LightSecondary)
+            }
+            if (active) Icon(Icons.Outlined.Check, null, tint = NexisPalette.Accent, modifier = Modifier.size(19.dp))
+        }
+    }
+}
+
+/**
+ * Picks which AI MODEL(S) are enabled for the current assistant role's
+ * fallback chain — separate from [AssistantSheet]. Same visual language.
+ *
+ * This is the single entry point for AI models: it now also owns key
+ * management directly (tap the key icon on a row), so nothing here requires
+ * leaving the drawer to open general Settings.
+ */
+@Composable
+fun ModelSheet(role: AssistantRole) {
+    var keysDialogProvider by remember { mutableStateOf<String?>(null) }
+    var showAddCustom by remember { mutableStateOf(false) }
+    var refresh by remember { mutableIntStateOf(0) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)) {
+            Text("نماذج الذكاء الاصطناعي", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 3.dp))
+            Text("فعّل أو عطّل نموذجًا ضمن سلسلة ${role.title()}، وأدر مفاتيح API مباشرة", fontSize = 11.sp, color = NexisPalette.LightSecondary, modifier = Modifier.padding(bottom = 12.dp))
+            refresh.let { }
+            ModelRegistry.allProviderIds().filter { it != "local" }.forEach { providerId ->
+                val keyCount = NexisSessionStore.keyStoreForSettings.getKeys(providerId).size
+                ModelSheetRow(
+                    providerId = providerId,
+                    keyCount = keyCount,
+                    enabled = NexisSessionStore.isProviderEnabled(role, providerId),
+                    onToggle = { enabled -> NexisSessionStore.toggleProvider(role, providerId, enabled) },
+                    onManageKeys = { keysDialogProvider = providerId }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable { showAddCustom = true }.padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.Add, null, Modifier.size(20.dp), tint = NexisPalette.Accent)
+                Spacer(Modifier.width(12.dp))
+                Text("إضافة نموذج مخصص", fontSize = 14.sp, color = NexisPalette.Accent)
+            }
+            Spacer(Modifier.height(22.dp))
+        }
+    }
+}
+
+@Composable
+private fun AssistantSheetRow(role: AssistantRole, selected: AssistantRole, onSelect: (AssistantRole) -> Unit) {
+    val active = role == selected
+    Surface(onClick = { onSelect(role) }, color = if (active) NexisPalette.Accent.copy(alpha = .09f) else Color.Transparent, shape = RoundedCornerShape(15.dp)) {
+        // Right-to-left reading order: icon first (right edge under RTL),
+        // then the name+description block, then the checkmark last (left edge).
+        Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(38.dp).background(if (active) NexisPalette.Accent else MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                Icon(when (role) { AssistantRole.CODING -> Icons.Outlined.Code; AssistantRole.CHAT -> Icons.Outlined.ChatBubbleOutline; AssistantRole.LOCAL -> Icons.Outlined.PhoneAndroid }, null, tint = if (active) Color.White else NexisPalette.Accent, modifier = Modifier.size(19.dp))
             }
             Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
@@ -224,28 +290,22 @@ private fun ModelSheetRow(
     onToggle: (Boolean) -> Unit,
     onManageKeys: () -> Unit
 ) {
-    // Neutral card background always — no green fill sweep. The only cue for
-    // "enabled" is the accent checkmark (plus a hairline accent border),
-    // matching the reference's plain white/gray cards.
-    Surface(
-        onClick = { onToggle(!enabled) },
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(15.dp),
-        border = if (enabled) BorderStroke(1.dp, NexisPalette.Accent.copy(alpha = .35f)) else null
+    // Flat row (no card, no icon badge): name + "cloud · key status" line,
+    // accent check when enabled, key button at the end.
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { onToggle(!enabled) }.padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(38.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.AutoAwesome, null, tint = NexisPalette.Accent, modifier = Modifier.size(19.dp))
-            }
-            Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f)) {
-                Text(providerDisplayName(providerId), fontSize = 13.sp, fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Normal)
-                Text(if (keyCount > 0) "$keyCount مفتاح مضاف" else "لا يوجد مفتاح", fontSize = 10.sp, color = NexisPalette.Muted)
-            }
-            if (enabled) Icon(Icons.Outlined.Check, null, tint = NexisPalette.Accent, modifier = Modifier.size(19.dp).padding(end = 4.dp))
-            IconButton(onClick = onManageKeys, modifier = Modifier.size(30.dp)) {
-                Icon(Icons.Outlined.VpnKey, "إدارة مفاتيح ${providerDisplayName(providerId)}", tint = NexisPalette.Muted, modifier = Modifier.size(16.dp))
-            }
+        Column(Modifier.weight(1f)) {
+            Text(providerDisplayName(providerId), fontSize = 15.sp, fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Normal)
+            Text(
+                "سحابي · " + if (keyCount > 0) "$keyCount مفتاح مضاف" else "لا يوجد مفتاح",
+                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (enabled) Icon(Icons.Outlined.Check, null, tint = NexisPalette.Accent, modifier = Modifier.size(20.dp).padding(end = 2.dp))
+        IconButton(onClick = onManageKeys, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Outlined.VpnKey, "إدارة مفاتيح ${providerDisplayName(providerId)}", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -285,4 +345,67 @@ fun ApiKeyDialog(providerId: String, onDismiss: () -> Unit) {
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("تم") } }
     )
+}
+
+
+/**
+ * Nexis confirmation dialog (Material 3, RTL-correct): rounded card, icon badge,
+ * start-aligned title/body and two equal-width buttons — cancel on the start
+ * (right) edge, the confirming action on the end (left) edge.
+ */
+@Composable
+fun NexisConfirmDialog(
+    title: String,
+    message: String,
+    confirmText: String,
+    dismissText: String = "إلغاء",
+    destructive: Boolean = false,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.DeleteOutline,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        // Softer, darker scrim behind the card.
+        (androidx.compose.ui.platform.LocalView.current.parent as? androidx.compose.ui.window.DialogWindowProvider)
+            ?.window?.setDimAmount(0.62f)
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            val accent = if (destructive) MaterialTheme.colorScheme.error else NexisPalette.Accent
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth().widthIn(max = 340.dp)
+            ) {
+                Column(Modifier.padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 18.dp)) {
+                    Box(
+                        Modifier.size(42.dp).background(accent.copy(alpha = .14f), androidx.compose.foundation.shape.CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(icon, null, tint = accent, modifier = Modifier.size(21.dp)) }
+                    Spacer(Modifier.height(14.dp))
+                    Text(title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        message, fontSize = 13.sp, lineHeight = 20.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .7f),
+                        maxLines = 4, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) { Text(dismissText, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface) }
+                        Button(
+                            onClick = onConfirm,
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White)
+                        ) { Text(confirmText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+            }
+        }
+    }
 }

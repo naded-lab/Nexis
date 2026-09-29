@@ -29,6 +29,9 @@ fun NexisDrawer(
     onProjects: () -> Unit,
     onSettings: () -> Unit,
     onPlugins: () -> Unit,
+    onSearch: () -> Unit = {},
+    onFiles: () -> Unit = {},
+    onTools: () -> Unit = {},
     onPickAssistant: () -> Unit,
     onPickModels: () -> Unit,
     onOpenConversation: () -> Unit = {}
@@ -53,6 +56,9 @@ fun NexisDrawer(
             // the drawer (still reachable from the chat top bar chip).
             AiModelsPillButton(onClick = onPickModels)
             Spacer(Modifier.height(10.dp))
+            DrawerRow("البحث", Icons.Outlined.Search, onSearch)
+            DrawerRow("الملفات", Icons.Outlined.Description, onFiles)
+            DrawerRow("الأدوات", Icons.Outlined.Build, onTools)
             DrawerRow("المشاريع", Icons.Outlined.FolderOpen, onProjects)
             DrawerRow("المهام المجدولة", Icons.Outlined.Schedule, onChat)
             DrawerRow("المكونات الإضافية", Icons.Outlined.Extension, onPlugins)
@@ -96,12 +102,13 @@ fun NexisDrawer(
                 )
             }
             deleting?.let { (p, c) ->
-                AlertDialog(
-                    onDismissRequest = { deleting = null },
-                    title = { Text("حذف المحادثة؟") },
-                    text = { Text("«${c.title}» ستُحذف نهائيًا.") },
-                    confirmButton = { TextButton(onClick = { NexisSessionStore.deleteConversation(p, c); deleting = null }) { Text("حذف", color = MaterialTheme.colorScheme.error) } },
-                    dismissButton = { TextButton(onClick = { deleting = null }) { Text("إلغاء") } }
+                NexisConfirmDialog(
+                    title = "حذف المحادثة؟",
+                    message = "«${c.title}» ستُحذف نهائيًا ولا يمكن استرجاعها.",
+                    confirmText = "حذف",
+                    destructive = true,
+                    onConfirm = { NexisSessionStore.deleteConversation(p, c); deleting = null },
+                    onDismiss = { deleting = null }
                 )
             }
             SettingsPill(onClick = onSettings)

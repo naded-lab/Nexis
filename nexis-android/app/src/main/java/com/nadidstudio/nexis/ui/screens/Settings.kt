@@ -1,28 +1,25 @@
 package com.nadidstudio.nexis.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nadidstudio.nexis.backup.BackupState
+import com.nadidstudio.nexis.data.AssistantPrefs
 import com.nadidstudio.nexis.data.ProfileStore
 import com.nadidstudio.nexis.ui.session.NexisSessionStore
 import com.nadidstudio.nexis.ui.theme.AppearanceMode
@@ -31,15 +28,27 @@ import com.nadidstudio.nexis.ui.theme.NexisPalette
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, onOpenLocalModel: () -> Unit = {}) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onLogout: () -> Unit,
+    onOpenLocalModel: () -> Unit = {},
+    onOpenModels: () -> Unit = {},
+    onOpenBackup: () -> Unit = {},
+    onOpenStorage: () -> Unit = {}
+) {
     var keysDialogProvider by remember { mutableStateOf<String?>(null) }
     var showAccountSheet by remember { mutableStateOf(false) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var profileName by remember { mutableStateOf(ProfileStore.name(ctx)) }
     var showProfileEdit by remember { mutableStateOf(false) }
     var showAppearanceDialog by remember { mutableStateOf(false) }
-    var showBackupDialog by remember { mutableStateOf(false) }
-    var notificationsOn by remember { mutableStateOf(true) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
+    var showInstructions by remember { mutableStateOf(false) }
+    var showPrivacy by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
+    var notificationsOn by remember { mutableStateOf(AssistantPrefs.notificationsOn) }
+    var showLanguage by remember { mutableStateOf(false) }
+    var showTermux by remember { mutableStateOf(false) }
 
     LazyColumn(
         Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp),
@@ -53,44 +62,123 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, onOpenLocalModel: (
             Spacer(Modifier.height(8.dp))
         }
 
-        item { ProfileCard(name = profileName, onClick = { showAccountSheet = true }) }
+        item { AccountHeader(name = profileName, onClick = { showAccountSheet = true }) }
 
-        item { SectionTitle("عام") }
         item {
-            SettingGroup {
-                SettingSwitchRow("الإشعارات", "تنبيهات التطبيق", Icons.Outlined.Notifications, notificationsOn) { notificationsOn = it }
-                GroupDivider()
-                SettingRow("اللغة", "العربية", Icons.Outlined.Language)
-                GroupDivider()
-                SettingRow("المظهر", NexisAppearance.mode.label, Icons.Outlined.Brightness6, onClick = { showAppearanceDialog = true })
-                GroupDivider()
-                SettingRow("التخزين", "إدارة البيانات والمحادثات", Icons.Outlined.Storage)
+            SettingsSection("عام") {
+                SettingsSwitchRow("الإشعارات", Icons.Outlined.Notifications, "تنبيهات التطبيق", notificationsOn) { notificationsOn = it; AssistantPrefs.notificationsOn = it }
+                SettingsRow("اللغة", Icons.Outlined.Language, value = "العربية", onClick = { showLanguage = true })
+                SettingsRow("المظهر", Icons.Outlined.Brightness6, value = NexisAppearance.mode.label, onClick = { showAppearanceDialog = true })
+                SettingsRow("التخزين", Icons.Outlined.Storage, sub = "إدارة البيانات والمحادثات", onClick = onOpenStorage)
             }
         }
 
-        item { SectionTitle("التطوير") }
         item {
-            SettingGroup {
-                SettingRow("النموذج المحلي", "Qwen GGUF من ذاكرة الهاتف", Icons.Outlined.Memory, onClick = onOpenLocalModel)
-                GroupDivider()
-                SettingRow("Termux", "ربط بيئة التطوير لاحقًا", Icons.Outlined.Terminal)
-                GroupDivider()
+            SettingsSection("الذكاء الاصطناعي") {
+                SettingsRow("النموذج الافتراضي", Icons.Outlined.AutoAwesome, sub = "اختيار النماذج والمفاتيح", onClick = onOpenModels)
+                SettingsRow(
+                    "التعليمات الشخصية", Icons.Outlined.EditNote,
+                    value = if (AssistantPrefs.instructions.isNotBlank()) "مفعّلة" else "غير مضبوطة",
+                    onClick = { showInstructions = true }
+                )
+                SettingsRow("النموذج المحلي", Icons.Outlined.Memory, sub = "Qwen GGUF من ذاكرة الهاتف", onClick = onOpenLocalModel)
+            }
+        }
+
+        item {
+            SettingsSection("الخصوصية والأمان") {
+                SettingsRow("الأذونات", Icons.Outlined.Security, sub = "إعدادات أذونات التطبيق في النظام", onClick = {
+                    ctx.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName))
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                })
+                SettingsRow("الخصوصية", Icons.Outlined.PrivacyTip, sub = "أين تُحفظ بياناتك ومفاتيحك", onClick = { showPrivacy = true })
+            }
+        }
+
+        item {
+            SettingsSection("للمطورين") {
+                SettingsRow("Termux", Icons.Outlined.Terminal, sub = "بيئة التطوير", onClick = { showTermux = true })
                 val connected = NexisSessionStore.keyStoreForSettings.hasAnyKey("github")
-                SettingRow("GitHub", if (connected) "متصل" else "غير متصل", Icons.Outlined.Code, onClick = { keysDialogProvider = "github" })
-                GroupDivider()
-                SettingRow("النسخ الاحتياطي", BackupState.status, Icons.Outlined.CloudUpload, onClick = { showBackupDialog = true })
+                SettingsRow(
+                    "GitHub", Icons.Outlined.Code,
+                    value = if (connected) "متصل" else "غير متصل",
+                    valueColor = if (connected) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                    onClick = { keysDialogProvider = "github" }
+                )
+                SettingsRow("النسخ الاحتياطي", Icons.Outlined.CloudUpload, sub = "آخر نسخة: ${BackupState.status}", onClick = onOpenBackup)
             }
         }
 
         item {
-            Spacer(Modifier.height(20.dp))
-            SettingGroup { SettingRow("تسجيل خروج", "", Icons.AutoMirrored.Outlined.Logout, onClick = onLogout, danger = true) }
+            SettingsSection("التطبيق") {
+                SettingsRow("حول Nexis", Icons.Outlined.Info, value = "0.1.0", onClick = { showAbout = true })
+            }
         }
 
         item {
-            Spacer(Modifier.height(20.dp))
-            Text("الإصدار 0.1.0", color = subtleColor(), fontSize = 11.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+            Spacer(Modifier.height(24.dp))
+            SettingsRow("تسجيل الخروج", Icons.AutoMirrored.Outlined.Logout, onClick = { showLogoutConfirm = true }, danger = true)
         }
+    }
+
+    if (showInstructions) {
+        var draft by remember { mutableStateOf(AssistantPrefs.instructions) }
+        ModalBottomSheet(onDismissRequest = { showInstructions = false }, containerColor = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).imePadding()) {
+                Text("التعليمات الشخصية", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                Text("تُضاف لكل محادثة مع أي نموذج (حتى ${AssistantPrefs.MAX_INSTRUCTIONS} حرفًا)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
+                OutlinedTextField(
+                    value = draft, onValueChange = { draft = it.take(AssistantPrefs.MAX_INSTRUCTIONS) },
+                    minLines = 4, maxLines = 8, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                )
+                Button(onClick = { AssistantPrefs.instructions = draft; showInstructions = false }, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text("حفظ") }
+            }
+        }
+    }
+
+    if (showLanguage) {
+        ModalBottomSheet(onDismissRequest = { showLanguage = false }, containerColor = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+                Text("اللغة", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+                SettingsRow(
+                    "العربية", Icons.Outlined.Language, onClick = { showLanguage = false },
+                    trailing = { Icon(Icons.Outlined.Check, null, Modifier.size(20.dp), tint = NexisPalette.Accent) }
+                )
+                SettingsRow("English", Icons.Outlined.Language, value = "قريبًا")
+            }
+        }
+    }
+
+    if (showTermux) InfoSheet(
+        "Termux",
+        "ربط Termux مخطط له: ينفّذ Nexis داخل بيئتك الأوامر التي يطلبها مساعد البرمجة (مثل git push) مع تأكيد قبل أي إجراء لا يمكن التراجع عنه. الميزة غير متاحة بعد.",
+        onDismiss = { showTermux = false }
+    )
+
+    if (showPrivacy) InfoSheet(
+        "الخصوصية",
+        "محادثاتك وملفاتك تُحفظ على هاتفك فقط، ولا تُرفع إلا إذا فعّلت النسخ الاحتياطي إلى مستودع GitHub الخاص بك. مفاتيح API والتوكنات تُخزَّن مشفّرة على الجهاز ولا تدخل في النسخ الاحتياطي. رسائلك تُرسل إلى مزوّد النموذج الذي تختاره فقط، وتبقى محلية بالكامل عند استخدام مساعد ONX.",
+        onDismiss = { showPrivacy = false }
+    )
+
+    if (showAbout) InfoSheet(
+        "حول Nexis",
+        "Nexis مركز ذكاء اصطناعي شخصي يجمع عدة نماذج وأدوات في تطبيق واحد. الإصدار 0.1.0",
+        onDismiss = { showAbout = false }
+    )
+
+    if (showLogoutConfirm) {
+        NexisConfirmDialog(
+            title = "تسجيل الخروج؟",
+            message = "سيتم تسجيل خروجك من هذا الحساب على هذا الجهاز.",
+            confirmText = "تسجيل الخروج",
+            destructive = true,
+            icon = Icons.AutoMirrored.Outlined.Logout,
+            onConfirm = { showLogoutConfirm = false; onLogout() },
+            onDismiss = { showLogoutConfirm = false }
+        )
     }
 
     if (showAccountSheet) {
@@ -101,9 +189,7 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, onOpenLocalModel: (
         ) {
             Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 22.dp)) {
                 Text("الحساب الشخصي", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 12.dp))
-                SettingGroup {
-                    SettingRow("تعديل الملف الشخصي", "الاسم", Icons.Outlined.Edit, onClick = { showAccountSheet = false; showProfileEdit = true })
-                }
+                SettingsRow("تعديل الملف الشخصي", Icons.Outlined.Edit, value = "الاسم", onClick = { showAccountSheet = false; showProfileEdit = true })
             }
         }
     }
@@ -146,88 +232,25 @@ fun SettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, onOpenLocalModel: (
         )
     }
 
-    if (showBackupDialog) BackupDialog(onDismiss = { showBackupDialog = false })
-
     val provider = keysDialogProvider
     if (provider != null) {
         ApiKeyDialog(providerId = provider, onDismiss = { keysDialogProvider = null })
     }
 }
 
-@Composable private fun subtleColor(): Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-
-@Composable private fun SectionTitle(text: String) {
-    Text(
-        text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 6.dp, top = 22.dp, bottom = 8.dp)
-    )
-}
-
-@Composable private fun SettingGroup(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    ) { Column(Modifier.fillMaxWidth(), content = content) }
-}
-
-@Composable private fun GroupDivider() {
-    HorizontalDivider(Modifier.padding(start = 64.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
-}
-
-@Composable private fun IconBadge(icon: ImageVector, danger: Boolean = false) {
-    val container = if (danger) MaterialTheme.colorScheme.error.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer
-    val tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    Box(Modifier.size(36.dp).background(container, RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) {
-        Icon(icon, null, Modifier.size(19.dp), tint = tint)
-    }
-}
-
-@Composable private fun ProfileCard(name: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+@Composable private fun AccountHeader(name: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(52.dp).background(Brush.linearGradient(listOf(NexisPalette.Accent, NexisPalette.Accent2)), CircleShape),
-                contentAlignment = Alignment.Center
-            ) { Icon(Icons.Outlined.Person, null, Modifier.size(28.dp), tint = Color.White) }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(if (name.isBlank()) "الحساب الشخصي" else name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text("الاسم والصورة والبيانات", fontSize = 12.sp, color = subtleColor())
-            }
+        Box(Modifier.size(48.dp).background(NexisPalette.Accent, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.Person, null, Modifier.size(26.dp), tint = Color.White)
         }
-    }
-}
-
-@Composable private fun SettingRow(
-    title: String, sub: String, icon: ImageVector,
-    onClick: (() -> Unit)? = null, danger: Boolean = false
-) {
-    var modifier = Modifier.fillMaxWidth() as Modifier
-    if (onClick != null) modifier = modifier.clickable(onClick = onClick)
-    Row(modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconBadge(icon, danger)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (danger) MaterialTheme.colorScheme.error else Color.Unspecified)
-            if (sub.isNotEmpty()) Text(sub, fontSize = 11.sp, color = subtleColor(), maxLines = 1)
+            Text(if (name.isBlank()) "الحساب الشخصي" else name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text("حساب Nexis", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-    }
-}
-
-@Composable private fun SettingSwitchRow(title: String, sub: String, icon: ImageVector, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconBadge(icon)
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            if (sub.isNotEmpty()) Text(sub, fontSize = 11.sp, color = subtleColor(), maxLines = 1)
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedTrackColor = NexisPalette.Accent))
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

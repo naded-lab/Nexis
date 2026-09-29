@@ -9,7 +9,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Nexis"
         android:theme="@style/Theme.Nexis"
-        android:supportsRtl="false">
+        android:supportsRtl="true">
 
         <activity
             android:name=".MainActivity"

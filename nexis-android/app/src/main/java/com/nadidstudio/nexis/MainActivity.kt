@@ -7,6 +7,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.nadidstudio.nexis.ui.navigation.NexisNavHost
@@ -32,9 +35,14 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            NexisTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    NexisNavHost()
+            // The whole UI is Arabic: force RTL at the root so every screen, dialog,
+            // popup and sheet mirrors consistently (icons that must not flip are drawn
+            // direction-independent or use AutoMirrored variants).
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                NexisTheme {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        NexisNavHost()
+                    }
                 }
             }
         }

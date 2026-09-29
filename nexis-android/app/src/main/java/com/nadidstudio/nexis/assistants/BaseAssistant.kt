@@ -45,7 +45,9 @@ abstract class BaseAssistant(
         val files = com.nadidstudio.nexis.data.ProjectFiles.buildContext(
             com.nadidstudio.nexis.data.InMemoryAppStore.findProject(conversation.projectId)
         )
-        return if (files.isEmpty()) "$systemPromptPrefix\n\n$history" else "$systemPromptPrefix\n\n$files\n$history"
+        val extra = com.nadidstudio.nexis.data.AssistantPrefs.promptExtra()
+        val prefix = if (extra.isEmpty()) systemPromptPrefix else "$systemPromptPrefix $extra"
+        return if (files.isEmpty()) "$prefix\n\n$history" else "$prefix\n\n$files\n$history"
     }
 }
 

@@ -162,21 +162,20 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
 @Composable private fun TopBar(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     // Compact bar: it owns the status-bar inset itself (Scaffold applies none) and
     // never reacts to the keyboard, so it stays pinned while typing.
-    // Layout close to the reference bar: new-chat sits alone on the leading
-    // side; the assistant selector and the drawer menu are grouped together
-    // on the trailing side, right next to each other.
+    // Correct RTL order (start = right edge): the drawer menu first, the assistant
+    // selector right next to it, and new-chat alone on the opposite (left) edge.
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CircleIconButton(onClick = { NexisSessionStore.newChat() }) {
-            NewChatGlyph(tint = MaterialTheme.colorScheme.onSurface)
-        }
-        Spacer(Modifier.weight(1f))
-        AssistantPill(onClick = onAssistant)
-        Spacer(Modifier.width(8.dp))
         CircleIconButton(onClick = onOpenDrawer) {
             MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
+        }
+        Spacer(Modifier.width(8.dp))
+        AssistantPill(onClick = onAssistant)
+        Spacer(Modifier.weight(1f))
+        CircleIconButton(onClick = { NexisSessionStore.newChat() }) {
+            NewChatGlyph(tint = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -213,8 +212,10 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
         val strokeH = 2.2.dp.toPx()
         val corner = CornerRadius(strokeH / 2f)
         val gap = 3.dp.toPx()
+        val shortW = size.width * 0.6f
+        val rtl = layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl
         drawRoundRect(color = tint, topLeft = Offset(0f, 0f), size = Size(size.width, strokeH), cornerRadius = corner)
-        drawRoundRect(color = tint, topLeft = Offset(0f, strokeH + gap), size = Size(size.width * 0.6f, strokeH), cornerRadius = corner)
+        drawRoundRect(color = tint, topLeft = Offset(if (rtl) size.width - shortW else 0f, strokeH + gap), size = Size(shortW, strokeH), cornerRadius = corner)
     }
 }
 
@@ -383,7 +384,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("اسأل", color = NexisPalette.Muted) },
+                placeholder = { Text("اسأل Nexis", color = NexisPalette.Muted) },
                 maxLines = 5,
                 colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
                 textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
@@ -393,8 +394,6 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
                 Spacer(Modifier.width(2.dp))
                 ModelPill()
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = {}, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.MicNone, "تسجيل صوتي", tint = MaterialTheme.colorScheme.onSurface) }
-                Spacer(Modifier.width(2.dp))
                 Surface(
                     onClick = if (busy) onStop else onSend,
                     shape = CircleShape,
@@ -419,13 +418,16 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
 @Composable private fun ModelPill() {
     val role = NexisSessionStore.selectedRole
     val active = NexisSessionStore.chainFor(role).firstOrNull() ?: "claude"
+    val fixed = role == com.nadidstudio.nexis.assistants.AssistantRole.LOCAL
     var expanded by remember { mutableStateOf(false) }
     Box {
-        Surface(onClick = { expanded = true }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Surface(onClick = { if (!fixed) expanded = true }, shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(providerDisplayName(active), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.width(3.dp))
-                Icon(Icons.Outlined.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
+                if (!fixed) {
+                    Spacer(Modifier.width(3.dp))
+                    Icon(Icons.Outlined.KeyboardArrowDown, null, modifier = Modifier.size(14.dp))
+                }
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -458,9 +460,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
 @Composable private fun AttachTile(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     Surface(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Column(Modifier.padding(vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(38.dp).background(NexisPalette.Accent.copy(alpha = .12f), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = NexisPalette.Accent, modifier = Modifier.size(18.dp))
-            }
+            Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
             Spacer(Modifier.height(7.dp))
             Text(label, fontSize = 11.sp)
         }

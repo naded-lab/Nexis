@@ -147,6 +147,8 @@ Java_com_nadidstudio_nexis_engine_LocalLlamaEngine_nativeChat(
     llama_free(session->ctx);
     session->ctx = newContext(session->model, kCtx);
     if (!session->ctx) { LOGE("context recreate failed"); return empty(); }
+    // Lets Stop interrupt even the (slow) prompt-processing phase, not only token sampling.
+    llama_set_abort_callback(session->ctx, [](void*) -> bool { return g_abort.load(); }, nullptr);
 
     llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
     llama_sampler_chain_add(smpl, llama_sampler_init_penalties(llama_vocab_n_tokens(llama_model_get_vocab(session->model)), 64, 1.1f, 0.0f, 0.0f));

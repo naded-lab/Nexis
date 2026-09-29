@@ -3,6 +3,7 @@ package com.nadidstudio.nexis.engine
 import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -70,6 +71,8 @@ object LocalLlamaEngine {
     /** [messages] = (role, text) pairs, role in system/user/assistant; formatted natively with the model's chat template. */
     suspend fun chat(messages: List<Pair<String, String>>, maxTokens: Int = 384): String = withContext(Dispatchers.IO) {
         mutex.withLock {
+            // Stop pressed while waiting for the lock / model load: don't start generating at all.
+            ensureActive()
             val h = handle
             if (h == 0L) return@withContext ""
             val bytes = nativeChat(h, messages.map { it.first }.toTypedArray(), messages.map { it.second }.toTypedArray(), maxTokens)

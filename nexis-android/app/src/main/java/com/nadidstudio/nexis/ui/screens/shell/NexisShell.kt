@@ -49,7 +49,8 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                         scope.launch { drawerState.close() }
                     },
                     onPickAssistant = { sheet = "assistant" },
-                    onPickModels = { sheet = "models" }
+                    onPickModels = { sheet = "models" },
+                    onOpenConversation = { page = "chat"; scope.launch { drawerState.close() } }
                 )
             }
         ) {

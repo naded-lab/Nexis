@@ -14,6 +14,30 @@ object LocalModelStore {
 
     data class Info(val uri: Uri, val name: String, val size: Long)
 
+    /** A model the user can pick, download in their browser, then link via SAF.
+     * Capped around 4B params — heavier models (7B+) are impractical to run
+     * smoothly with pure-CPU llama.cpp on a phone. */
+    data class Catalog(
+        val title: String,
+        val org: String,
+        val paramsLabel: String,
+        val quantLabel: String,
+        val url: String,
+        val recommended: Boolean = false
+    )
+
+    val CATALOG = listOf(
+        Catalog("Qwen 2.5 Instruct", "Qwen", "0.5B", "GGUF · Q4_K_M", DOWNLOAD_URL, recommended = true),
+        Catalog(
+            "Llama 3.2 Instruct", "Meta", "3B", "GGUF · Q4_K_M",
+            "https://huggingface.co/hugging-quants/Llama-3.2-3B-Instruct-Q4_K_M-GGUF/resolve/main/llama-3.2-3b-instruct-q4_k_m.gguf"
+        ),
+        Catalog(
+            "Phi-3 Mini Instruct", "Microsoft", "3.8B", "GGUF · Q4_K_M",
+            "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
+        )
+    )
+
     private fun prefs(c: Context) = c.getSharedPreferences("nexis_local_model", Context.MODE_PRIVATE)
 
     fun current(c: Context): Info? {

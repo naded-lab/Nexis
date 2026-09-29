@@ -56,6 +56,8 @@ class LocalPersistence(context: Context) {
                         p.conversations.toList().forEach { c ->
                             put(JSONObject().apply {
                                 put("id", c.id); put("projectId", c.projectId)
+                                c.customTitle?.let { put("title", it) }
+                                if (c.pinned) put("pinned", true)
                                 put("messages", JSONArray().apply {
                                     c.messages.toList().forEach { m ->
                                         put(JSONObject().apply { put("role", m.role); put("text", m.text); put("t", m.timestampMillis) })
@@ -101,7 +103,10 @@ class LocalPersistence(context: Context) {
                     val mo = ma.getJSONObject(k)
                     msgs.add(ChatMessage(mo.getString("role"), mo.getString("text"), mo.optLong("t", 0L)))
                 }
-                convs.add(Conversation(co.getString("id"), co.getString("projectId"), msgs))
+                convs.add(Conversation(co.getString("id"), co.getString("projectId"), msgs).also {
+                    it.customTitle = if (co.has("title")) co.getString("title").ifBlank { null } else null
+                    it.pinned = co.optBoolean("pinned", false)
+                })
             }
             val files = mutableStateListOf<String>()
             val projectId = po.getString("id")

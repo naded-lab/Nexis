@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
@@ -15,12 +16,12 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must be called before super.onCreate(): draws the branded (teal +
+        // logo) launch screen immediately, back to API 21, so the old blank
+        // white flash on first install/open is gone.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        // No branded splash screen at all — not the old animated Compose one,
-        // not an OS-level teal/logo one either. App shows the real UI
-        // (Login) the instant the first frame is ready.
-        //
         // init() itself only sets up in-memory state — fast and safe to run
         // synchronously here. Anything that touches the Android Keystore
         // (encrypted API-key storage) is warmed up separately, off the main

@@ -185,11 +185,12 @@ class GeminiAdapter(
                 }
 
                 val url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-                    "gemini-1.5-flash:generateContent?key=${key.keyValue}"
+                    "gemini-2.5-flash:generateContent"
 
                 val request = okhttp3.Request.Builder()
                     .url(url)
                     .addHeader("content-type", "application/json")
+                    .addHeader("x-goog-api-key", key.keyValue.trim())
                     .post(
                         okhttp3.RequestBody.create(
                             "application/json; charset=utf-8".toMediaTypeOrNull(),
@@ -315,7 +316,20 @@ class LocalModelAdapter(private val context: android.content.Context) : AiModelA
             ?: return AiCallResult.PermanentError("لم يتم اختيار ملف النموذج المحلي بعد")
         val err = com.nadidstudio.nexis.engine.LocalLlamaEngine.ensureLoaded(context, info.uri)
         if (err != null) return AiCallResult.PermanentError(err)
-        val text = com.nadidstudio.nexis.engine.LocalLlamaEngine.generate(prompt)
+        val text = com.nadidstudio.nexis.engine.LocalLlamaEngine.chat(promptToMessages(prompt))
         return if (text.isBlank()) AiCallResult.TransientError("رد فارغ من النموذج المحلي") else AiCallResult.Success(text)
+    }
+
+    /** Splits the assistant's flat "system\n\nuser: ..\nassistant: .." prompt back into chat turns. */
+    private fun promptToMessages(prompt: String): List<Pair<String, String>> {
+        val turn = Regex("(?m)^(?=(?:user|assistant): )")
+        val first = Regex("(?m)^(?:user|assistant): ").find(prompt)?.range?.first ?: prompt.length
+        val system = prompt.substring(0, first).trim().take(1500) + "\nReply in the same language the user writes in."
+        val out = mutableListOf("system" to system)
+        prompt.substring(first).split(turn).filter { it.isNotBlank() }.forEach { seg ->
+            val role = if (seg.startsWith("assistant: ")) "assistant" else "user"
+            out.add(role to seg.substringAfter(": ").trim())
+        }
+        return out
     }
 }

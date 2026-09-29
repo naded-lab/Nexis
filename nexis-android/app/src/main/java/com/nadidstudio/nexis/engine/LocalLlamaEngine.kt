@@ -26,8 +26,16 @@ object LocalLlamaEngine {
         }
     }
 
+    /** Set by the session store while a local reply is being generated; receives the text so far. */
+    @Volatile var partialListener: ((String) -> Unit)? = null
+
+    /** Called from native code for every couple of tokens (cumulative, valid UTF-8). */
+    @androidx.annotation.Keep
+    fun onNativeBytes(bytes: ByteArray) { partialListener?.invoke(String(bytes, Charsets.UTF_8)) }
+
     private external fun nativeLoad(fd: Int, nCtx: Int): Long
-    private external fun nativeGenerate(handle: Long, prompt: String, maxTokens: Int): String
+    private external fun nativeChat(handle: Long, roles: Array<String>, contents: Array<String>, maxTokens: Int): ByteArray
+    private external fun nativeAbort()
     private external fun nativeFree(handle: Long)
 
     /** Loads [uri] if it isn't already the currently-loaded model. Returns an error message, or null on success. */
@@ -56,11 +64,16 @@ object LocalLlamaEngine {
         }
     }
 
-    suspend fun generate(prompt: String, maxTokens: Int = 256): String = withContext(Dispatchers.IO) {
+    /** Stops a running generation (returns whatever was produced so far). */
+    fun abort() { if (libraryLoaded) nativeAbort() }
+
+    /** [messages] = (role, text) pairs, role in system/user/assistant; formatted natively with the model's chat template. */
+    suspend fun chat(messages: List<Pair<String, String>>, maxTokens: Int = 384): String = withContext(Dispatchers.IO) {
         mutex.withLock {
             val h = handle
             if (h == 0L) return@withContext ""
-            nativeGenerate(h, prompt, maxTokens)
+            val bytes = nativeChat(h, messages.map { it.first }.toTypedArray(), messages.map { it.second }.toTypedArray(), maxTokens)
+            String(bytes, Charsets.UTF_8).trim()
         }
     }
 }

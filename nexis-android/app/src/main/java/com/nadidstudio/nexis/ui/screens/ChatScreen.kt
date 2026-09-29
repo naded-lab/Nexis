@@ -8,12 +8,18 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,6 +50,9 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     val scope = rememberCoroutineScope()
     val messages = NexisSessionStore.messages
     val thinking = NexisSessionStore.sending
+    val streaming = NexisSessionStore.streamingText
+    val clipboard = LocalClipboardManager.current
+    val liked = remember { mutableStateMapOf<Int, Boolean>() }
     val error = NexisSessionStore.lastError
     val notice = NexisSessionStore.lastNotice
     val context = LocalContext.current
@@ -51,8 +60,11 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
         if (uri != null) NexisSessionStore.importFile(context, uri)
     }
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+    LaunchedEffect(messages.size, thinking) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1 + if (thinking) 1 else 0)
+    }
+    LaunchedEffect(streaming?.length?.div(40)) {
+        if (streaming != null && messages.isNotEmpty()) listState.scrollToItem(messages.size)
     }
 
     // Only a boolean flip (not every animation frame of the keyboard) triggers this,
@@ -73,14 +85,40 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
         Column(Modifier.fillMaxSize().padding(padding)) {
             TopBar(onOpenDrawer = onOpenDrawer, onAssistant = onAssistant)
 
-            if (messages.isEmpty()) Box(Modifier.weight(1f)) { EmptyChat() } else LazyColumn(
+            if (messages.isEmpty() && !thinking) Box(Modifier.weight(1f)) { EmptyChat(onPick = { input = it }) } else LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                items(messages) { MessageBubble(it) }
-                if (thinking) item { ThinkingBubble() }
+                itemsIndexed(messages) { pos, m ->
+                    if (m.fromUser) {
+                        UserMessage(
+                            m, canEdit = !thinking,
+                            onCopy = { clipboard.setText(AnnotatedString(m.text)) },
+                            onEdit = { NexisSessionStore.takeForEdit(m.index)?.let { input = it } }
+                        )
+                    } else {
+                        AssistantMessage(
+                            m.text,
+                            isLast = pos == messages.lastIndex && !thinking,
+                            liked = liked[m.index],
+                            onCopy = { clipboard.setText(AnnotatedString(m.text)) },
+                            onRegenerate = { NexisSessionStore.regenerate() },
+                            onLike = { if (liked[m.index] == true) liked.remove(m.index) else liked[m.index] = true },
+                            onDislike = { if (liked[m.index] == false) liked.remove(m.index) else liked[m.index] = false },
+                            onShare = {
+                                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, m.text)
+                                }
+                                context.startActivity(android.content.Intent.createChooser(send, null).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }
+                        )
+                    }
+                }
+                if (thinking) item {
+                    if (streaming.isNullOrEmpty()) ThinkingBubble() else StreamingMessage(streaming)
+                }
             }
 
             if (error != null) {
@@ -98,6 +136,8 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
                 if (showTools) ToolRow(onClose = { showTools = false }, onFile = { showTools = false; pickFile.launch(arrayOf("*/*")) })
                 Composer(
                     value = input,
+                    busy = thinking,
+                    onStop = { NexisSessionStore.stop() },
                     onValueChange = { input = it },
                     onTools = { showTools = !showTools },
                     onSend = {
@@ -105,7 +145,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
                         if (text.isNotEmpty() && !thinking) {
                             NexisSessionStore.addUserMessageOptimistically(text)
                             input = ""
-                            scope.launch { NexisSessionStore.send(text) }
+                            NexisSessionStore.send(text)
                         }
                     }
                 )
@@ -122,20 +162,21 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
 @Composable private fun TopBar(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     // Compact bar: it owns the status-bar inset itself (Scaffold applies none) and
     // never reacts to the keyboard, so it stays pinned while typing.
-    Box(
+    // Layout close to the reference bar: new-chat sits alone on the leading
+    // side; the assistant selector and the drawer menu are grouped together
+    // on the trailing side, right next to each other.
+    Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 10.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        AssistantPill(onClick = onAssistant, modifier = Modifier.align(Alignment.Center))
-        CircleIconButton(onClick = onOpenDrawer, modifier = Modifier.align(Alignment.CenterStart)) {
-            MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
-        }
-        // New chat: square with a pencil sticking out of the top-right corner.
-        CircleIconButton(
-            onClick = { NexisSessionStore.newChat() },
-            modifier = Modifier.align(Alignment.CenterEnd)
-        ) {
+        CircleIconButton(onClick = { NexisSessionStore.newChat() }) {
             NewChatGlyph(tint = MaterialTheme.colorScheme.onSurface)
+        }
+        Spacer(Modifier.weight(1f))
+        AssistantPill(onClick = onAssistant)
+        Spacer(Modifier.width(8.dp))
+        CircleIconButton(onClick = onOpenDrawer) {
+            MenuGlyph(tint = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -166,12 +207,12 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 }
 
-// Two stacked bars: the top one is longer than the bottom one.
+// Two stacked bars, close together: the top one is longer than the bottom one.
 @Composable private fun MenuGlyph(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(width = 20.dp, height = 14.dp)) {
+    Canvas(modifier = modifier.size(width = 20.dp, height = 10.dp)) {
         val strokeH = 2.2.dp.toPx()
         val corner = CornerRadius(strokeH / 2f)
-        val gap = size.height - strokeH * 2f
+        val gap = 3.dp.toPx()
         drawRoundRect(color = tint, topLeft = Offset(0f, 0f), size = Size(size.width, strokeH), cornerRadius = corner)
         drawRoundRect(color = tint, topLeft = Offset(0f, strokeH + gap), size = Size(size.width * 0.6f, strokeH), cornerRadius = corner)
     }
@@ -207,43 +248,130 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     }
 }
 
-// A small, quiet watermark of the real brand mark, centered — per the
-// reference screenshot, nothing else (no heading, no subtext). Kept small
-// and very low-opacity on purpose so it reads as a subtle texture, not a
-// dominant logo taking over the empty state.
-@Composable private fun EmptyChat() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+// Empty state: the brand mark, a greeting, and tappable starter prompts.
+@Composable private fun EmptyChat(onPick: (String) -> Unit) {
+    val ctx = LocalContext.current
+    val name = remember { com.nadidstudio.nexis.data.ProfileStore.name(ctx) }
+    val role = NexisSessionStore.selectedRole
+    val suggestions = when (role) {
+        com.nadidstudio.nexis.assistants.AssistantRole.CODING -> listOf(
+            "اشرح لي هذا الكود: " to Icons.Outlined.Code,
+            "ساعدني في إصلاح هذا الخطأ: " to Icons.Outlined.BugReport,
+            "اقترح لي فكرة تطبيق وصمّمها" to Icons.Outlined.Lightbulb,
+            "راجع هذا الكود وحسّنه: " to Icons.Outlined.FactCheck
+        )
+        else -> listOf(
+            "اشرح لي مفهومًا ببساطة: " to Icons.Outlined.School,
+            "لخّص لي هذا النص: " to Icons.Outlined.Notes,
+            "ترجم لي إلى الإنجليزية: " to Icons.Outlined.Translate,
+            "اقترح لي أفكارًا لـ " to Icons.Outlined.Lightbulb
+        )
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Image(
             painter = painterResource(R.drawable.ic_nexis_logo_mark),
             contentDescription = null,
-            modifier = Modifier.size(108.dp),
-            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            modifier = Modifier.size(64.dp),
+            colorFilter = ColorFilter.tint(NexisPalette.Accent)
         )
-    }
-}
-
-@Composable private fun MessageBubble(message: UiMessage) {
-    val user = message.fromUser
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.Start else Arrangement.End) {
-        Surface(color = if (user) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer, contentColor = if (user) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, shape = if (user) RoundedCornerShape(18.dp, 18.dp, 6.dp, 18.dp) else RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp), modifier = Modifier.widthIn(max = 330.dp)) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                Text(message.text, fontSize = 14.sp, lineHeight = 22.sp)
-                if (message.time.isNotEmpty()) {
-                    Spacer(Modifier.height(5.dp))
-                    Text(message.time, fontSize = 10.sp, color = LocalContentColor.current.copy(alpha = .52f))
+        Spacer(Modifier.height(18.dp))
+        Text(if (name.isNotBlank()) "أهلاً $name" else "أهلاً بك", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text("كيف أقدر أساعدك اليوم؟", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
+        Spacer(Modifier.height(26.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            suggestions.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { (text, icon) ->
+                        Surface(
+                            onClick = { onPick(text) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Column(Modifier.padding(12.dp).heightIn(min = 64.dp)) {
+                                Icon(icon, null, tint = NexisPalette.Accent, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.height(6.dp))
+                                Text(text.trim().removeSuffix(":"), fontSize = 12.sp, lineHeight = 17.sp, maxLines = 3)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-@Composable private fun ThinkingBubble() { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(18.dp, 18.dp, 18.dp, 6.dp)) { Row(Modifier.padding(horizontal = 15.dp, vertical = 13.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) { repeat(3) { Box(Modifier.size(5.dp).background(NexisPalette.Muted, RoundedCornerShape(50))) } } } } }
+// User: soft bubble. Under it: copy + edit.
+@Composable private fun UserMessage(message: UiMessage, canEdit: Boolean, onCopy: () -> Unit, onEdit: () -> Unit) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            Text(
+                message.text, fontSize = 15.sp, lineHeight = 23.sp,
+                style = LocalTextStyle.current.copy(textDirection = androidx.compose.ui.text.style.TextDirection.Content),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            )
+        }
+        Row {
+            ActionIcon(Icons.Outlined.ContentCopy, "نسخ", onCopy)
+            if (canEdit) ActionIcon(Icons.Outlined.Edit, "تعديل", onEdit)
+        }
+    }
+}
+
+// Assistant: no bubble, full width, rendered Markdown. Actions underneath.
+@Composable private fun AssistantMessage(
+    text: String, isLast: Boolean, liked: Boolean?,
+    onCopy: () -> Unit, onRegenerate: () -> Unit, onLike: () -> Unit, onDislike: () -> Unit, onShare: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        SelectionContainer { MarkdownText(text) }
+        Row(Modifier.padding(top = 2.dp)) {
+            ActionIcon(Icons.Outlined.ContentCopy, "نسخ", onCopy)
+            if (isLast) ActionIcon(Icons.Outlined.Refresh, "إعادة توليد", onRegenerate)
+            ActionIcon(if (liked == true) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUpOffAlt, "أعجبني", onLike, active = liked == true)
+            ActionIcon(if (liked == false) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDownOffAlt, "لم يعجبني", onDislike, active = liked == false)
+            ActionIcon(Icons.Outlined.IosShare, "مشاركة", onShare)
+        }
+    }
+}
+
+// Reply that is still being produced.
+@Composable private fun StreamingMessage(text: String) {
+    Column(Modifier.fillMaxWidth()) { MarkdownText(text) }
+}
+
+@Composable private fun ActionIcon(icon: ImageVector, label: String, onClick: () -> Unit, active: Boolean = false) {
+    IconButton(onClick = onClick, modifier = Modifier.size(34.dp)) {
+        Icon(icon, label, Modifier.size(17.dp), tint = if (active) NexisPalette.Accent else MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
+    }
+}
+
+@Composable private fun ThinkingBubble() {
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "dots")
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(3) { i ->
+            val a by t.animateFloat(
+                0.25f, 1f,
+                androidx.compose.animation.core.infiniteRepeatable(
+                    androidx.compose.animation.core.tween(600, delayMillis = i * 150),
+                    androidx.compose.animation.core.RepeatMode.Reverse
+                ), label = "d$i"
+            )
+            Box(Modifier.size(7.dp).background(NexisPalette.Accent.copy(alpha = a), CircleShape))
+        }
+    }
+}
 
 // Input bar per the newest reference: one rounded card holding the text
 // field on top and a control row underneath — attach, the active-model
 // pill (English provider name, opens a plain model dropdown), mic, and send.
 // Replaces the earlier separate-outer-circles layout.
-@Composable private fun Composer(value: String, onValueChange: (String) -> Unit, onTools: () -> Unit, onSend: () -> Unit) {
+@Composable private fun Composer(value: String, busy: Boolean, onStop: () -> Unit, onValueChange: (String) -> Unit, onTools: () -> Unit, onSend: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         shape = RoundedCornerShape(24.dp),
@@ -268,13 +396,14 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
                 IconButton(onClick = {}, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.MicNone, "تسجيل صوتي", tint = MaterialTheme.colorScheme.onSurface) }
                 Spacer(Modifier.width(2.dp))
                 Surface(
-                    onClick = onSend,
+                    onClick = if (busy) onStop else onSend,
                     shape = CircleShape,
-                    color = if (value.isNotBlank()) NexisPalette.Accent else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = if (busy || value.isNotBlank()) NexisPalette.Accent else MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.size(38.dp)
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.ArrowUpward, "إرسال", tint = if (value.isNotBlank()) Color.White else NexisPalette.Muted, modifier = Modifier.size(18.dp))
+                        if (busy) Box(Modifier.size(12.dp).background(Color.White, RoundedCornerShape(3.dp)))
+                        else Icon(Icons.Outlined.ArrowUpward, "إرسال", tint = if (value.isNotBlank()) Color.White else NexisPalette.Muted, modifier = Modifier.size(18.dp))
                     }
                 }
             }

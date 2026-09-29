@@ -55,23 +55,24 @@ class FallbackOrchestrator(
             }
 
             for (key in keys) {
-                attemptLog.add("$providerId:${key.id}")
-
                 when (val result = adapter.send(prompt, key)) {
                     is AiCallResult.Success -> {
                         healthTracker.markWorking(providerId, key.id)
                         return OrchestratedResult.Success(result.text, providerId)
                     }
                     is AiCallResult.QuotaExceeded -> {
+                        attemptLog.add("$providerId ← الحصة انتهت (429) ${result.raw.orEmpty().take(140)}")
                         healthTracker.markQuotaExceeded(providerId, key.id)
                         // fall through to the next key for this same provider
                     }
                     is AiCallResult.TransientError -> {
+                        attemptLog.add("$providerId ← ${result.raw.orEmpty().take(140)}")
                         healthTracker.markServerDown(providerId, key.id)
                         // provider-side hiccup — also move on for now; a later
                         // pass can add a short retry-before-skip here
                     }
                     is AiCallResult.PermanentError -> {
+                        attemptLog.add("$providerId ← ${result.raw.orEmpty().take(140)}")
                         healthTracker.markInvalid(providerId, key.id)
                         // bad key — never retried automatically, per design
                     }

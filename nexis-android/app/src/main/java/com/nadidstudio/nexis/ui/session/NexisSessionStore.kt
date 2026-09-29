@@ -3,6 +3,11 @@ package com.nadidstudio.nexis.ui.session
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateListOf
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.nadidstudio.nexis.assistants.AssistantRole
@@ -22,7 +27,7 @@ import com.nadidstudio.nexis.orchestration.OrchestratedResult
 import com.nadidstudio.nexis.security.SecureKeyStore
 
 /** UI-facing chat bubble — same shape the ChatScreen design already expects. */
-data class UiMessage(val fromUser: Boolean, val text: String, val time: String)
+data class UiMessage(val fromUser: Boolean, val text: String, val time: String, val index: Int = -1)
 
 /**
  * Real session store behind the uploaded UI design (Drawer/ChatScreen/
@@ -102,13 +107,51 @@ object NexisSessionStore {
     var selectedProject by mutableStateOf<Project?>(null)
         private set
 
-    private var currentConversation: Conversation? = null
+    private var currentConversation by mutableStateOf<Conversation?>(null)
 
     var messages by mutableStateOf<List<UiMessage>>(emptyList())
         private set
 
-    var sending by mutableStateOf(false)
+    /** Ids of conversations that are waiting for a reply right now. Per-conversation,
+     *  so a pending reply in one chat never blocks typing/sending in another. */
+    private val sendingIds = mutableStateListOf<String>()
+
+    val sending: Boolean get() = currentConversation?.id?.let { it in sendingIds } == true
+
+    /** Sends outlive whichever screen started them (leaving the chat used to cancel
+     *  the coroutine and leave the "sending" flag stuck forever). */
+    private val jobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    private val stopped = mutableSetOf<String>()
+    private val revealIds = mutableStateListOf<String>()
+
+    /** Reply text produced so far, per conversation (real tokens for the local model, typed-out for remote ones). */
+    val streamingTexts = mutableStateMapOf<String, String>()
+    val streamingText: String? get() = currentConversation?.id?.let { streamingTexts[it] }
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Every conversation that has at least one message, newest first, across all assistants/projects. */
+    /** Bumped whenever a conversation's title/pin/messages change, so the drawer list recomposes. */
+    var listVersion by mutableStateOf(0)
         private set
+
+    fun allConversations(): List<Pair<Project, Conversation>> =
+        listVersion.let { (InMemoryAppStore.codingProjects + InMemoryAppStore.chatProjects + InMemoryAppStore.localProjects)
+            .flatMap { p -> p.conversations.filter { it.messages.isNotEmpty() }.map { p to it } }
+            .sortedByDescending { it.second.messages.last().timestampMillis } }
+
+    fun isConversationSending(id: String) = id in sendingIds
+    val currentConversationId: String? get() = currentConversation?.id
+
+    /** Opens any saved conversation (from the drawer list), switching project/assistant as needed. */
+    fun openConversation(project: Project, conversation: Conversation) {
+        selectedProject = project
+        selectedRole = project.assistantRole
+        currentConversation = conversation
+        lastError = null
+        lastNotice = null
+        syncMessagesFromConversation()
+    }
 
     var lastError by mutableStateOf<String?>(null)
         private set
@@ -165,53 +208,158 @@ object NexisSessionStore {
     fun openProject(project: Project) {
         selectedProject = project
         selectedRole = project.assistantRole
-        currentConversation = project.conversations.firstOrNull()
+        currentConversation = project.conversations.lastOrNull()
             ?: InMemoryAppStore.createConversation(project)
+        lastError = null
         syncMessagesFromConversation()
     }
 
     fun newChat() {
         val project = selectedProject ?: return
-        currentConversation = InMemoryAppStore.createConversation(project)
-        messages = emptyList()
+        // Reuse the current chat if it is still empty instead of piling up blank ones.
+        val cur = currentConversation
+        if (cur == null || cur.messages.isNotEmpty()) {
+            currentConversation = project.conversations.lastOrNull { it.messages.isEmpty() && it.id !in sendingIds }
+                ?: InMemoryAppStore.createConversation(project)
+        }
+        lastError = null
+        syncMessagesFromConversation()
     }
 
     private fun syncMessagesFromConversation() {
         val conversation = currentConversation ?: return
-        messages = conversation.messages.map {
-            UiMessage(fromUser = it.role == "user", text = it.text, time = "")
-        }
+        // While a remote reply is being "typed out", its full text is already in the
+        // conversation — hide it so only the growing streaming bubble is visible.
+        val visible = if (conversation.id in revealIds) conversation.messages.dropLast(1) else conversation.messages.toList()
+        messages = visible.mapIndexed { i, m -> UiMessage(fromUser = m.role == "user", text = m.text, time = "", index = i) }
     }
 
     fun addUserMessageOptimistically(text: String) {
-        messages = messages + UiMessage(true, text, "الآن")
+        messages = messages + UiMessage(true, text, "الآن", messages.size)
     }
 
-    /** Sends through the real fallback orchestrator; call from a coroutine scope. */
-    suspend fun send(text: String) {
+    /** Fire-and-forget send through the real fallback orchestrator (runs in an app-level scope). */
+    fun send(text: String) {
         val conversation = currentConversation ?: return
-        val assistant: BaseAssistant = when (selectedRole) {
+        if (conversation.id in sendingIds) return
+        val role = selectedRole
+        val chain = chainFor(role)
+        val assistant: BaseAssistant = when (role) {
             AssistantRole.CODING -> codingAssistant
             AssistantRole.CHAT -> chatAssistant
             AssistantRole.LOCAL -> localAssistant
         }
-        sending = true
+        val id = conversation.id
+        sendingIds.add(id)
         lastError = null
         lastNotice = null
-        when (val result = assistant.sendMessage(conversation, text, chainFor(selectedRole))) {
-            is OrchestratedResult.Success -> {
-                syncMessagesFromConversation()
+        val job = appScope.launch {
+            var error: String? = null
+            try {
+                if (role == AssistantRole.LOCAL) {
+                    com.nadidstudio.nexis.engine.LocalLlamaEngine.partialListener = { streamingTexts[id] = it }
+                }
+                when (val result = assistant.sendMessage(conversation, text, chain)) {
+                    is OrchestratedResult.Success -> if (role != AssistantRole.LOCAL) reveal(conversation, result.text)
+                    is OrchestratedResult.Offline -> error = "لا يوجد اتصال بالإنترنت"
+                    is OrchestratedResult.AllModelsFailed -> {
+                        val detail = result.attempts.lastOrNull { it.contains("←") }
+                        error = when {
+                            result.attempts.isEmpty() -> "لا يوجد مفتاح API لأي نموذج مفعّل — أضف مفتاحًا من الإعدادات أو اختر النموذج المحلي"
+                            detail != null -> "فشل النموذج — $detail"
+                            else -> "كل النماذج المتاحة فشلت — تحقق من مفاتيح API في الإعدادات"
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                stopped.add(id)
+            } catch (e: Throwable) {
+                error = "خطأ غير متوقع: ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                if (role == AssistantRole.LOCAL) com.nadidstudio.nexis.engine.LocalLlamaEngine.partialListener = null
+                streamingTexts.remove(id)
+                revealIds.remove(id)
+                sendingIds.remove(id)
+                jobs.remove(id)
                 InMemoryAppStore.persist()
+                listVersion++
             }
-            is OrchestratedResult.Offline -> {
-                lastError = "لا يوجد اتصال بالإنترنت"
-            }
-            is OrchestratedResult.AllModelsFailed -> {
-                lastError = "كل النماذج المتاحة فشلت — تحقق من مفاتيح API في الإعدادات"
+            val wasStopped = stopped.remove(id)
+            // Only touch the visible chat if the user is still looking at this conversation.
+            if (currentConversation?.id == id) {
+                lastError = if (wasStopped) null else error
+                syncMessagesFromConversation()
             }
         }
-        // Persist even on failure: the user's message was already added to the conversation.
+        jobs[id] = job
+    }
+
+    /** Types the finished remote reply out progressively (the providers return whole replies). */
+    private suspend fun reveal(conversation: Conversation, full: String) {
+        val id = conversation.id
+        revealIds.add(id)
+        if (currentConversation?.id == id) syncMessagesFromConversation()
+        val step = maxOf(3, full.length / 220)
+        var i = 0
+        while (i < full.length) {
+            i = minOf(full.length, i + step)
+            streamingTexts[id] = full.substring(0, i)
+            kotlinx.coroutines.delay(16)
+        }
+    }
+
+    /** Stop button: the local model keeps what it already wrote; remote calls are simply dropped. */
+    fun stop() {
+        val id = currentConversation?.id ?: return
+        if (id !in sendingIds) return
+        stopped.add(id)
+        if (selectedRole == AssistantRole.LOCAL) com.nadidstudio.nexis.engine.LocalLlamaEngine.abort()
+        else jobs[id]?.cancel()
+    }
+
+    /** Re-asks the last question (drops the last answer). */
+    fun regenerate() {
+        val c = currentConversation ?: return
+        if (c.id in sendingIds || c.messages.isEmpty()) return
+        if (c.messages.last().role == "assistant") c.messages.removeAt(c.messages.lastIndex)
+        val lastUser = c.messages.lastOrNull() ?: return
+        if (lastUser.role != "user") return
+        c.messages.removeAt(c.messages.lastIndex)
+        syncMessagesFromConversation()
+        addUserMessageOptimistically(lastUser.text)
+        send(lastUser.text)
+    }
+
+    /** Edit: removes that message and everything after it, returns its text to put back in the input. */
+    fun takeForEdit(uiIndex: Int): String? {
+        val c = currentConversation ?: return null
+        if (c.id in sendingIds || uiIndex !in c.messages.indices) return null
+        val text = c.messages[uiIndex].text
+        while (c.messages.size > uiIndex) c.messages.removeAt(c.messages.lastIndex)
+        syncMessagesFromConversation()
         InMemoryAppStore.persist()
-        sending = false
+        listVersion++
+        return text
+    }
+
+    fun renameConversation(c: Conversation, name: String) {
+        c.customTitle = name.trim().ifBlank { null }
+        InMemoryAppStore.persist(); listVersion++
+    }
+
+    fun togglePin(c: Conversation) {
+        c.pinned = !c.pinned
+        InMemoryAppStore.persist(); listVersion++
+    }
+
+    fun deleteConversation(project: Project, c: Conversation) {
+        jobs[c.id]?.cancel()
+        project.conversations.remove(c)
+        if (currentConversation?.id == c.id) {
+            currentConversation = project.conversations.lastOrNull() ?: InMemoryAppStore.createConversation(project)
+            lastError = null
+            syncMessagesFromConversation()
+        }
+        InMemoryAppStore.persist(); listVersion++
     }
 }

@@ -24,7 +24,16 @@ data class Conversation(
     val id: String,
     val projectId: String,
     val messages: MutableList<ChatMessage> = mutableListOf()
-)
+) {
+    /** User-chosen name (rename) — null means "derive from the first message". */
+    var customTitle: String? = null
+    var pinned: Boolean = false
+
+    /** Sidebar title: the custom name, else the first user message. */
+    val title: String
+        get() = customTitle ?: messages.firstOrNull { it.role == "user" }?.text?.trim()?.replace("\n", " ")?.take(36)
+            ?.ifBlank { null } ?: "محادثة جديدة"
+}
 
 /**
  * A project groups conversations that share the same uploaded files.

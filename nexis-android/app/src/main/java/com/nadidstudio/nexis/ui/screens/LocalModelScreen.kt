@@ -95,23 +95,56 @@ fun LocalModelScreen(onBack: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-        OutlinedButton(
-            onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LocalModelStore.DOWNLOAD_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(26.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-        ) {
-            Icon(Icons.Outlined.Download, null, tint = NexisPalette.Accent, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("تحميل Qwen Q4_K_M", color = NexisPalette.Accent, fontSize = 14.sp)
+        Spacer(Modifier.height(20.dp))
+        Text("نماذج مقترحة", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            "حمّل أي منها من المتصفح، ثم اربطه بزر \"إضافة ملف النموذج\" أعلاه.",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+        )
+        Spacer(Modifier.height(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LocalModelStore.CATALOG.forEach { model -> CatalogCard(ctx, model) }
         }
-        TextButton(
-            onClick = {
-                val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("url", LocalModelStore.DOWNLOAD_URL))
-            },
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        ) { Text("نسخ رابط التحميل", color = NexisPalette.Accent, fontSize = 14.sp) }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun CatalogCard(ctx: android.content.Context, model: LocalModelStore.Catalog) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(18.dp),
+        border = if (model.recommended) BorderStroke(1.dp, NexisPalette.Accent.copy(alpha = .45f)) else null,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(model.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        if (model.recommended) {
+                            Spacer(Modifier.width(6.dp))
+                            Surface(color = NexisPalette.Accent, shape = RoundedCornerShape(8.dp)) {
+                                Text(
+                                    "موصى به", fontSize = 10.sp, color = androidx.compose.ui.graphics.Color.White,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        "${model.org} · ${model.paramsLabel} · ${model.quantLabel}",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                    )
+                }
+                IconButton(onClick = {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(model.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }) { Icon(Icons.Outlined.Download, "تحميل", tint = NexisPalette.Accent) }
+                IconButton(onClick = {
+                    val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("url", model.url))
+                }) { Icon(Icons.Outlined.ContentCopy, "نسخ الرابط", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) }
+            }
+        }
     }
 }

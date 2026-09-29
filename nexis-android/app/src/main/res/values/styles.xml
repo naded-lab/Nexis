@@ -4,4 +4,12 @@
         <item name="android:colorPrimary">@color/nexis_teal</item>
         <item name="android:windowBackground">@color/white</item>
     </style>
+
+    <!-- Branded launch theme: shown the instant the process starts (API 21+),
+         so there is no blank-white gap before the first Compose frame. -->
+    <style name="Theme.Nexis.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/nexis_teal</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_nexis_logo_mark</item>
+        <item name="postSplashScreenTheme">@style/Theme.Nexis</item>
+    </style>
 </resources>

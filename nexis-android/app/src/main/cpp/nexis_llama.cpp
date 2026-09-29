@@ -149,7 +149,7 @@ Java_com_nadidstudio_nexis_engine_LocalLlamaEngine_nativeChat(
     if (!session->ctx) { LOGE("context recreate failed"); return empty(); }
 
     llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.1f, 0.0f, 0.0f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(llama_vocab_n_tokens(llama_model_get_vocab(session->model)), 64, 1.1f, 0.0f, 0.0f));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.7f));

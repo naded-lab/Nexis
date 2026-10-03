@@ -37,6 +37,12 @@ fun NexisShell(onLogout: () -> Unit = {}) {
         var page by remember { mutableStateOf("chat") }
         var sheet by remember { mutableStateOf<String?>(null) }
         var returnTo by remember { mutableStateOf("settings") }
+        var searchQuery by remember { mutableStateOf("") }
+        val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+        val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        LaunchedEffect(drawerState.targetValue) {
+            if (drawerState.targetValue == DrawerValue.Open) { focusManager.clearFocus(); keyboard?.hide() }
+        }
 
         ModalNavigationDrawer(
             drawerState = drawerState,
@@ -50,15 +56,11 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                     onChat = { page = "chat"; scope.launch { drawerState.close() } },
                     onProjects = { page = "projects"; scope.launch { drawerState.close() } },
                     onSettings = { page = "settings"; scope.launch { drawerState.close() } },
-                    onSearch = { page = "search"; scope.launch { drawerState.close() } },
-                    onFiles = { page = "files"; scope.launch { drawerState.close() } },
-                    onTools = { page = "tools"; scope.launch { drawerState.close() } },
-                    onPlugins = {
-                        // TODO: real "plugins/add-ons" install screen — not built yet.
-                        scope.launch { drawerState.close() }
-                    },
+                    onSearchFiles = { q -> searchQuery = q; page = "search"; scope.launch { drawerState.close() } },
+                    onPlugins = { page = "plugins"; scope.launch { drawerState.close() } },
                     onPickAssistant = { sheet = "assistant" },
                     onPickModels = { sheet = "models" },
+                    onNewChat = { NexisSessionStore.newChat(); page = "chat"; scope.launch { drawerState.close() } },
                     onOpenConversation = { page = "chat"; scope.launch { drawerState.close() } }
                 )
             }
@@ -77,10 +79,15 @@ fun NexisShell(onLogout: () -> Unit = {}) {
                     onOpenStorage = { page = "storage" }
                 )
                 "storage" -> com.nadidstudio.nexis.ui.screens.StorageScreen(onBack = { page = "settings" })
-                "search" -> com.nadidstudio.nexis.ui.screens.SearchScreen(onBack = { page = "chat" }, onOpenChat = { page = "chat" })
-                "files" -> com.nadidstudio.nexis.ui.screens.FilesScreen(onBack = { page = "chat" })
-                "tools" -> com.nadidstudio.nexis.ui.screens.ToolsScreen(
+                "search" -> com.nadidstudio.nexis.ui.screens.SearchScreen(onBack = { searchQuery = ""; page = "chat" }, onOpenChat = { searchQuery = ""; page = "chat" }, initialQuery = searchQuery)
+                "plugins" -> com.nadidstudio.nexis.ui.screens.PluginsScreen(
                     onBack = { page = "chat" },
+                    onOpenFiles = { page = "files" },
+                    onOpenTools = { page = "tools" }
+                )
+                "files" -> com.nadidstudio.nexis.ui.screens.FilesScreen(onBack = { page = "plugins" })
+                "tools" -> com.nadidstudio.nexis.ui.screens.ToolsScreen(
+                    onBack = { page = "plugins" },
                     onOpenSearch = { page = "search" },
                     onOpenFiles = { page = "files" },
                     onOpenProjects = { page = "projects" },

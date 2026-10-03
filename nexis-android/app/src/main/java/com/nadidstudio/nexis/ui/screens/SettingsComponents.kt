@@ -38,6 +38,7 @@ fun SettingsRow(
     valueColor: Color = Color.Unspecified,
     onClick: (() -> Unit)? = null,
     danger: Boolean = false,
+    showChevron: Boolean = false,
     trailing: (@Composable () -> Unit)? = null
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -60,7 +61,7 @@ fun SettingsRow(
         }
         if (trailing != null) {
             Spacer(Modifier.width(8.dp)); trailing()
-        } else if (onClick != null && !danger) {
+        } else if (showChevron && onClick != null && !danger) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(20.dp), tint = muted)
         }
     }

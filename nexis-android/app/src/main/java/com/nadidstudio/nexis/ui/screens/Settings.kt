@@ -81,7 +81,7 @@ fun SettingsScreen(
                     value = if (AssistantPrefs.instructions.isNotBlank()) "مفعّلة" else "غير مضبوطة",
                     onClick = { showInstructions = true }
                 )
-                SettingsRow("النموذج المحلي", Icons.Outlined.Memory, sub = "Qwen GGUF من ذاكرة الهاتف", onClick = onOpenLocalModel)
+                SettingsRow("النموذج المحلي", Icons.Outlined.Memory, sub = "Qwen GGUF من ذاكرة الهاتف", value = com.nadidstudio.nexis.engine.LocalLlamaEngine.status, onClick = onOpenLocalModel)
             }
         }
 

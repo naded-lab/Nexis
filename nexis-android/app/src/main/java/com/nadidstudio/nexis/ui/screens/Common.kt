@@ -43,6 +43,13 @@ fun AssistantRole.subtitle(): String = when (this) {
 }
 
 /** Display name for a provider id (falls back to the id itself for a custom-added model). */
+/** "3:40 م" for today, "3:40 م · 2/10" when the limit ends on another day. */
+fun formatLimitTime(epochMs: Long): String {
+    val time = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date(epochMs))
+    val sameDay = java.text.SimpleDateFormat("yyyyDDD", java.util.Locale.US).let { it.format(java.util.Date(epochMs)) == it.format(java.util.Date()) }
+    return if (sameDay) time else time + " · " + java.text.SimpleDateFormat("d/M", java.util.Locale.getDefault()).format(java.util.Date(epochMs))
+}
+
 fun providerDisplayName(providerId: String): String = when (providerId) {
     "claude" -> "Claude"
     "chatgpt" -> "ChatGPT"
@@ -114,6 +121,7 @@ private fun AssistantSheetRow(role: AssistantRole, selected: AssistantRole, onSe
 fun ModelSheet(role: AssistantRole) {
     var keysDialogProvider by remember { mutableStateOf<String?>(null) }
     var showAddCustom by remember { mutableStateOf(false) }
+    var showFree by remember { mutableStateOf(false) }
     var refresh by remember { mutableIntStateOf(0) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
 
@@ -133,6 +141,14 @@ fun ModelSheet(role: AssistantRole) {
                 )
             }
             Spacer(Modifier.height(8.dp))
+            Surface(onClick = { showFree = true }, color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(15.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(19.dp), tint = NexisPalette.Accent)
+                    Spacer(Modifier.width(10.dp))
+                    Text("مزوّدات مجانية جاهزة", fontSize = 13.sp)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             Surface(onClick = { showAddCustom = true }, color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(15.dp)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Add, null, Modifier.size(19.dp), tint = NexisPalette.Accent)
@@ -147,6 +163,19 @@ fun ModelSheet(role: AssistantRole) {
     val provider = keysDialogProvider
     if (provider != null) {
         ApiKeyDialog(providerId = provider, onDismiss = { keysDialogProvider = null })
+    }
+
+    if (showFree) {
+        FreeProvidersDialog(
+            onDismiss = { showFree = false },
+            onAdded = { id ->
+                refresh++
+                if (NexisSessionStore.keyStoreForSettings.getKeys(id).isEmpty()) {
+                    showFree = false
+                    keysDialogProvider = id
+                }
+            }
+        )
     }
 
     if (showAddCustom) {
@@ -166,7 +195,7 @@ fun ModelSheet(role: AssistantRole) {
                     Text("أي خدمة متوافقة مع صيغة OpenAI (chat/completions)", fontSize = 11.sp, color = NexisPalette.Muted)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = {
-                            name = "Groq"; url = "https://api.groq.com/openai/v1/chat/completions"; model = "llama-3.3-70b-versatile"
+                            name = "Groq"; url = "https://api.groq.com/openai/v1/chat/completions"; model = "openai/gpt-oss-120b"
                         }) { Text("Groq", fontSize = 12.sp) }
                         OutlinedButton(onClick = {
                             name = "OpenRouter"; url = "https://openrouter.ai/api/v1/chat/completions"; model = ""
@@ -235,7 +264,8 @@ private fun ModelSheetRow(
         Column(Modifier.weight(1f)) {
             Text(providerDisplayName(providerId), fontSize = 15.sp, fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Normal)
             Text(
-                "سحابي · " + if (keyCount > 0) "$keyCount مفتاح مضاف" else "لا يوجد مفتاح",
+                "سحابي · " + (NexisSessionStore.providerLimitedUntil(providerId)?.let { "محدود حتى ${formatLimitTime(it)}" }
+                    ?: if (keyCount > 0) "$keyCount مفتاح مضاف" else "لا يوجد مفتاح"),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -264,6 +294,12 @@ fun ApiKeyDialog(providerId: String, onDismiss: () -> Unit) {
                             NexisSessionStore.keyStoreForSettings.removeKey(providerId, entry.id)
                             keys = NexisSessionStore.keyStoreForSettings.getKeys(providerId)
                         }) { Icon(Icons.Outlined.Delete, "حذف") }
+                    }
+                }
+                if (providerId != "github" && keys.isNotEmpty()) {
+                    val until = NexisSessionStore.providerLimitedUntil(providerId)
+                    TextButton(onClick = { NexisSessionStore.resetProviderLimits(providerId); keys = NexisSessionStore.keyStoreForSettings.getKeys(providerId) }) {
+                        Text(if (until != null) "انتهى الحد — إلغاء الإيقاف (حتى ${formatLimitTime(until)})" else "إعادة تفعيل المفاتيح", fontSize = 13.sp)
                     }
                 }
                 Spacer(Modifier.height(8.dp))

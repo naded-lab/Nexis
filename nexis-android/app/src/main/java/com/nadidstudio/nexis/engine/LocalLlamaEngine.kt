@@ -15,6 +15,9 @@ import kotlinx.coroutines.withContext
  * llama.cpp's normal file loader (mmap) works unchanged.
  */
 object LocalLlamaEngine {
+    /** Human-readable load state shown in the UI. */
+    var status by androidx.compose.runtime.mutableStateOf("لم يُحمَّل بعد")
+
     private var libraryLoaded = false
     private var handle: Long = 0
     private var loadedUri: Uri? = null
@@ -42,11 +45,12 @@ object LocalLlamaEngine {
     /** Loads [uri] if it isn't already the currently-loaded model. Returns an error message, or null on success. */
     suspend fun ensureLoaded(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
         mutex.withLock {
-            if (handle != 0L && loadedUri == uri) return@withContext null
+            if (handle != 0L && loadedUri == uri) { status = "جاهز"; return@withContext null }
+            status = "جارٍ التحميل…"
             try {
                 ensureLibrary()
             } catch (e: UnsatisfiedLinkError) {
-                return@withContext "تعذّر تحميل مكتبة النموذج المحلي: ${e.message}"
+                status = "فشل التحميل"; return@withContext "تعذّر تحميل مكتبة النموذج المحلي: ${e.message}"
             }
             if (handle != 0L) {
                 nativeFree(handle)
@@ -54,12 +58,13 @@ object LocalLlamaEngine {
                 loadedUri = null
             }
             val pfd = context.contentResolver.openFileDescriptor(uri, "r")
-                ?: return@withContext "تعذّر فتح ملف النموذج"
+                ?: run { status = "فشل التحميل"; return@withContext "تعذّر فتح ملف النموذج" }
             pfd.use {
-                val h = nativeLoad(it.fd, 2048)
-                if (h == 0L) return@withContext "فشل تحميل النموذج — تأكد أن الملف GGUF صالح"
+                val h = nativeLoad(it.fd, 3072)
+                if (h == 0L) { status = "فشل التحميل"; return@withContext "فشل تحميل النموذج — تأكد أن الملف GGUF صالح" }
                 handle = h
                 loadedUri = uri
+                status = "جاهز"
             }
             null
         }

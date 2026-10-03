@@ -61,10 +61,43 @@ object ProjectFiles {
     }
 
     /** Text block prepended to the prompt so every conversation in the project sees the files. */
-    fun buildContext(project: Project?): String {
+    private class Chunk(val file: String, val idx: Int, val text: String, val score: Int)
+
+    /**
+     * [query] == null → whole files (up to [maxChars]).
+     * [query] != null → only the chunks most relevant to the question (for small on-device models).
+     */
+    fun buildContext(project: Project?, query: String? = null, maxChars: Int = MAX_CONTEXT_CHARS): String {
         if (project == null || project.uploadedFilePaths.isEmpty()) return ""
+        if (query != null) {
+            val words = query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 3 }.toSet()
+            val chunks = mutableListOf<Chunk>()
+            for (path in project.uploadedFilePaths.toList()) {
+                val text = runCatching { File(path).readText() }.getOrNull() ?: continue
+                val name = displayName(path)
+                var i = 0; var n = 0
+                while (i < text.length) {
+                    val end = minOf(i + 700, text.length)
+                    val piece = text.substring(i, end)
+                    val low = piece.lowercase()
+                    chunks.add(Chunk(name, n++, piece, words.count { low.contains(it) }))
+                    i = end
+                }
+            }
+            var picked = chunks.filter { it.score > 0 }.sortedByDescending { it.score }
+            if (picked.isEmpty()) picked = chunks.filter { it.idx == 0 }
+            val out = mutableListOf<Chunk>()
+            var used = 0
+            for (c in picked) { if (used + c.text.length > maxChars) continue; out.add(c); used += c.text.length }
+            if (out.isEmpty()) return ""
+            val sb = StringBuilder("Relevant excerpts from the project files:\n")
+            out.sortedWith(compareBy({ it.file }, { it.idx })).forEach {
+                sb.append("\n--- ").append(it.file).append(" (part ").append(it.idx + 1).append(") ---\n").append(it.text).append('\n')
+            }
+            return sb.toString()
+        }
         val sb = StringBuilder("Project files (shared context for this project):\n")
-        var remaining = MAX_CONTEXT_CHARS
+        var remaining = maxChars
         for (path in project.uploadedFilePaths.toList()) {
             if (remaining <= 0) break
             val text = runCatching { File(path).readText() }.getOrNull() ?: continue

@@ -42,6 +42,7 @@ object NexisSessionStore {
 
     private lateinit var keyStore: SecureKeyStore
     private lateinit var orchestrator: FallbackOrchestrator
+    private lateinit var healthTracker: ModelHealthTracker
     private lateinit var codingAssistant: CodingAssistant
     private lateinit var chatAssistant: ChatAssistant
     private lateinit var localAssistant: LocalAssistant
@@ -59,10 +60,11 @@ object NexisSessionStore {
         }
         keyStore = SecureKeyStore(context.applicationContext)
         com.nadidstudio.nexis.backup.GitHubBackup.attach(context, keyStore)
+        healthTracker = ModelHealthTracker(context.applicationContext.getSharedPreferences("nexis_key_health", Context.MODE_PRIVATE))
         orchestrator = FallbackOrchestrator(
             keyStore = keyStore,
             networkMonitor = NetworkMonitor(context.applicationContext),
-            healthTracker = ModelHealthTracker()
+            healthTracker = healthTracker
         )
         codingAssistant = CodingAssistant(orchestrator)
         chatAssistant = ChatAssistant(orchestrator)
@@ -184,6 +186,18 @@ object NexisSessionStore {
         if (role == AssistantRole.LOCAL) listOf("local")
         else (roleChains[role] ?: ModelRegistry.defaultChainFor(role)).filterNot { it == "local" }
 
+    /** Status dot for the quick model switcher: ready / paused by limit / bad key / no key. */
+    fun providerStatus(providerId: String): com.nadidstudio.nexis.head.ProviderStatus =
+        healthTracker.providerStatus(providerId, keyStore.getKeys(providerId).map { it.id })
+
+    /** Epoch ms when this provider's paused keys come back, or null if it isn't limited. */
+    fun providerLimitedUntil(providerId: String): Long? =
+        healthTracker.limitedUntil(providerId, keyStore.getKeys(providerId).map { it.id })
+
+    /** Manual reset from the key dialog: clears pauses / bad-key marks for every key of this provider. */
+    fun resetProviderLimits(providerId: String) =
+        healthTracker.resetProvider(providerId, keyStore.getKeys(providerId).map { it.id })
+
     fun isProviderEnabled(role: AssistantRole, providerId: String): Boolean =
         chainFor(role).contains(providerId)
 
@@ -248,11 +262,11 @@ object NexisSessionStore {
     }
 
     /** Fire-and-forget send through the real fallback orchestrator (runs in an app-level scope). */
-    fun send(text: String) {
+    fun send(text: String, chainOverride: List<String>? = null) {
         val conversation = currentConversation ?: return
         if (conversation.id in sendingIds) return
         val role = selectedRole
-        val chain = chainFor(role)
+        val chain = chainOverride ?: chainFor(role)
         val assistant: BaseAssistant = when (role) {
             AssistantRole.CODING -> codingAssistant
             AssistantRole.CHAT -> chatAssistant
@@ -278,7 +292,8 @@ object NexisSessionStore {
                         if (result.providerId != "local") reveal(conversation, result.text)
                         val wanted = chain.firstOrNull()
                         if (wanted != null && wanted != result.providerId) {
-                            notice = "تعذّر ${providerDisplayName(wanted)} — أجاب ${providerDisplayName(result.providerId)}"
+                            val until = providerLimitedUntil(wanted)?.let { " (حتى ${com.nadidstudio.nexis.ui.screens.formatLimitTime(it)})" }.orEmpty()
+                            notice = "تعذّر ${providerDisplayName(wanted)}$until — أجاب ${providerDisplayName(result.providerId)}"
                         }
                     }
                     is OrchestratedResult.Offline -> error = "لا يوجد اتصال بالإنترنت"
@@ -360,8 +375,19 @@ object NexisSessionStore {
         }
     }
 
+    /**
+     * Re-asks the last question with another model for this one answer only: the chosen
+     * model goes first, the role's usual chain stays behind it as fallback, and the
+     * role's saved active model is NOT changed.
+     */
+    fun regenerateWith(providerId: String) {
+        val role = selectedRole
+        if (role == AssistantRole.LOCAL) return
+        regenerate((listOf(providerId) + chainFor(role).filterNot { it == providerId }).take(5))
+    }
+
     /** Re-asks the last question (drops the last answer). */
-    fun regenerate() {
+    fun regenerate(chainOverride: List<String>? = null) {
         val c = currentConversation ?: return
         if (c.id in sendingIds || c.messages.isEmpty()) return
         if (c.messages.last().role == "assistant") c.messages.removeAt(c.messages.lastIndex)
@@ -370,7 +396,7 @@ object NexisSessionStore {
         c.messages.removeAt(c.messages.lastIndex)
         syncMessagesFromConversation()
         addUserMessageOptimistically(lastUser.text)
-        send(lastUser.text)
+        send(lastUser.text, chainOverride)
     }
 
     /** Edit: removes that message and everything after it, returns its text to put back in the input. */

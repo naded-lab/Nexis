@@ -56,8 +56,10 @@ class SecureKeyStore(context: Context) {
 
     /** Adds a new key for the given provider, appended to the end of its list. */
     fun addKey(providerId: String, keyValue: String): ApiKeyEntry {
+        val existing = getKeys(providerId)
+        existing.firstOrNull { it.keyValue == keyValue }?.let { return it } // same key twice would only waste a failover slot
         val entry = ApiKeyEntry(id = UUID.randomUUID().toString(), keyValue = keyValue)
-        val updated = getKeys(providerId) + entry
+        val updated = existing + entry
         saveKeys(providerId, updated)
         return entry
     }

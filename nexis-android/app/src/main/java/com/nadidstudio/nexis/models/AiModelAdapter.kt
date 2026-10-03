@@ -13,7 +13,7 @@ sealed class AiCallResult {
     data class Success(val text: String) : AiCallResult()
 
     /** Quota/rate limit hit on this key — try the next key for the same model. */
-    data class QuotaExceeded(val raw: String? = null) : AiCallResult()
+    data class QuotaExceeded(val raw: String? = null, val retryAfterMs: Long? = null) : AiCallResult()
 
     /** Network blip / server hiccup — safe to retry the same key shortly. */
     data class TransientError(val raw: String? = null) : AiCallResult()
@@ -52,7 +52,7 @@ interface AiModelAdapter {
  * Claude adapter — calls the real Anthropic Messages API.
  */
 class ClaudeAdapter(
-    private val client: okhttp3.OkHttpClient = okhttp3.OkHttpClient()
+    private val client: okhttp3.OkHttpClient = NexisHttp
 ) : AiModelAdapter {
     override val providerId = "claude"
     override val displayName = "Claude"
@@ -87,8 +87,8 @@ class ClaudeAdapter(
                     )
                     .build()
 
-                client.await(request).let { (code, raw) ->
-                    parseHttpOutcome(code, raw) { json ->
+                client.await(request).let { (code, raw, retry) ->
+                    parseHttpOutcome(code, raw, retry) { json ->
                         json.getJSONArray("content").getJSONObject(0).getString("text")
                     }
                 }
@@ -107,7 +107,7 @@ class ClaudeAdapter(
  * key/fallback contract as every other adapter.
  */
 class ChatGptAdapter(
-    private val client: okhttp3.OkHttpClient = okhttp3.OkHttpClient()
+    private val client: okhttp3.OkHttpClient = NexisHttp
 ) : AiModelAdapter {
     override val providerId = "chatgpt"
     override val displayName = "ChatGPT"
@@ -140,8 +140,8 @@ class ChatGptAdapter(
                     )
                     .build()
 
-                client.await(request).let { (code, raw) ->
-                    parseHttpOutcome(code, raw) { json ->
+                client.await(request).let { (code, raw, retry) ->
+                    parseHttpOutcome(code, raw, retry) { json ->
                         json.getJSONArray("choices")
                             .getJSONObject(0)
                             .getJSONObject("message")
@@ -166,13 +166,20 @@ class ChatGptAdapter(
  * available, the next one is used automatically so a renamed model never
  * breaks the assistant again.
  */
+/** Shared HTTP client: generous read timeout so slow "thinking" models don't fail with a connection error. */
+internal val NexisHttp: okhttp3.OkHttpClient = okhttp3.OkHttpClient.Builder()
+    .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+    .readTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+    .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    .build()
+
 class GeminiAdapter(
-    private val client: okhttp3.OkHttpClient = okhttp3.OkHttpClient()
+    private val client: okhttp3.OkHttpClient = NexisHttp
 ) : AiModelAdapter {
     override val providerId = "gemini"
     override val displayName = "Gemini"
 
-    private val modelIds = listOf("gemini-3.5-flash", "gemini-3.5-flash-lite")
+    private val modelIds = listOf("gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash")
 
     override suspend fun send(prompt: String, key: ApiKeyEntry): AiCallResult {
         var last: AiCallResult = AiCallResult.PermanentError("النموذج غير متاح حاليًا لدى المزوّد")
@@ -215,8 +222,8 @@ class GeminiAdapter(
                     )
                     .build()
 
-                client.await(request).let { (code, raw) ->
-                    parseHttpOutcome(code, raw) { json ->
+                client.await(request).let { (code, raw, retry) ->
+                    parseHttpOutcome(code, raw, retry) { json ->
                         val parts = json.getJSONArray("candidates")
                             .getJSONObject(0)
                             .getJSONObject("content")
@@ -243,7 +250,7 @@ class GeminiAdapter(
  * Runs an OkHttp call so that cancelling the coroutine (the Stop button)
  * really cancels the underlying HTTP request instead of letting it run on.
  */
-private suspend fun okhttp3.OkHttpClient.await(request: okhttp3.Request): Pair<Int, String?> =
+private suspend fun okhttp3.OkHttpClient.await(request: okhttp3.Request): HttpReply =
     suspendCancellableCoroutine { cont ->
         val call = newCall(request)
         cont.invokeOnCancellation { runCatching { call.cancel() } }
@@ -253,7 +260,11 @@ private suspend fun okhttp3.OkHttpClient.await(request: okhttp3.Request): Pair<I
             }
             override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
                 response.use {
-                    val out = try { it.code to it.body?.string() } catch (e: java.io.IOException) {
+                    val out = try {
+                        val body = it.body?.string()
+                        // Only a 429 carries a meaningful "try again in" hint.
+                        HttpReply(it.code, body, if (it.code == 429) retryAfterMs(it, body) else null)
+                    } catch (e: java.io.IOException) {
                         if (cont.isActive) cont.resumeWith(Result.failure(e)); return
                     }
                     if (cont.isActive) cont.resumeWith(Result.success(out))
@@ -261,6 +272,55 @@ private suspend fun okhttp3.OkHttpClient.await(request: okhttp3.Request): Pair<I
             }
         })
     }
+
+/** code + body + (for 429) how long the provider says to wait. Destructures like the old Pair. */
+internal data class HttpReply(val code: Int, val raw: String?, val retryAfterMs: Long?)
+
+/**
+ * Reads the provider's own "when can I try again" from a 429: the standard Retry-After header,
+ * OpenAI's x-ratelimit-reset-* ("6m0s"), Anthropic's anthropic-ratelimit-*-reset (RFC 3339 time),
+ * or Gemini's retryDelay in the JSON body. Returns null when the provider gave no hint.
+ */
+internal fun retryAfterMs(resp: okhttp3.Response, body: String?): Long? {
+    val now = System.currentTimeMillis()
+    val found = mutableListOf<Long>()
+
+    resp.header("retry-after")?.trim()?.let { v ->
+        v.toDoubleOrNull()?.let { found.add((it * 1000).toLong()) }
+            ?: runCatching {
+                val fmt = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US)
+                found.add(fmt.parse(v)!!.time - now)
+            }
+    }
+    if (found.isEmpty()) {
+        for (name in resp.headers.names()) {
+            val low = name.lowercase()
+            val v = resp.header(name) ?: continue
+            if (low.startsWith("x-ratelimit-reset")) parseDurationMs(v)?.let { found.add(it) }
+            else if (low.startsWith("anthropic-ratelimit-") && low.endsWith("-reset")) {
+                runCatching {
+                    val t = java.time.Instant.parse(v.trim()).toEpochMilli() - now
+                    found.add(t)
+                }
+            }
+        }
+    }
+    if (found.isEmpty() && body != null) {
+        Regex("\"retryDelay\"\\s*:\\s*\"([0-9.]+)s\"").find(body)?.groupValues?.get(1)?.toDoubleOrNull()
+            ?.let { found.add((it * 1000).toLong()) }
+    }
+    val ms = found.filter { it > 0 }.maxOrNull() ?: return null
+    return ms.coerceIn(1_000L, 24L * 3600_000L)
+}
+
+/** "1h2m3.5s", "6m0s", "20ms", "45s" -> milliseconds. */
+private fun parseDurationMs(text: String): Long? {
+    val m = Regex("^(?:(\\d+)h)?(?:(\\d+)m(?!s))?(?:([0-9.]+)s)?(?:(\\d+)ms)?$").find(text.trim()) ?: return null
+    val (h, min, sec, ms) = m.destructured
+    if (h.isEmpty() && min.isEmpty() && sec.isEmpty() && ms.isEmpty()) return null
+    return (h.toLongOrNull() ?: 0L) * 3_600_000L + (min.toLongOrNull() ?: 0L) * 60_000L +
+        ((sec.toDoubleOrNull() ?: 0.0) * 1000).toLong() + (ms.toLongOrNull() ?: 0L)
+}
 
 /** Pulls a short human message out of a provider's JSON error body (never returns raw JSON). */
 internal fun friendlyApiError(code: Int, raw: String?): String {
@@ -294,6 +354,7 @@ internal fun friendlyApiError(code: Int, raw: String?): String {
 private inline fun parseHttpOutcome(
     code: Int,
     raw: String?,
+    retryAfterMs: Long?,
     extractText: (org.json.JSONObject) -> String
 ): AiCallResult {
     return when {
@@ -305,7 +366,7 @@ private inline fun parseHttpOutcome(
             }
         }
         code == 401 || code == 403 -> AiCallResult.PermanentError(friendlyApiError(code, raw))
-        code == 429 -> AiCallResult.QuotaExceeded(friendlyApiError(code, raw))
+        code == 429 -> AiCallResult.QuotaExceeded(friendlyApiError(code, raw), retryAfterMs)
         code in 500..599 -> AiCallResult.TransientError(friendlyApiError(code, raw))
         else -> AiCallResult.PermanentError(friendlyApiError(code, raw))
     }
@@ -320,7 +381,7 @@ open class OpenAiCompatibleAdapter(
     override val displayName: String,
     private val baseUrl: String,
     private val model: String,
-    private val client: okhttp3.OkHttpClient = okhttp3.OkHttpClient()
+    private val client: okhttp3.OkHttpClient = NexisHttp
 ) : AiModelAdapter {
 
     override suspend fun send(prompt: String, key: ApiKeyEntry): AiCallResult =
@@ -349,8 +410,8 @@ open class OpenAiCompatibleAdapter(
                         )
                     )
                     .build()
-                client.await(request).let { (code, raw) ->
-                    parseHttpOutcome(code, raw) { json ->
+                client.await(request).let { (code, raw, retry) ->
+                    parseHttpOutcome(code, raw, retry) { json ->
                         json.getJSONArray("choices").getJSONObject(0)
                             .getJSONObject("message").getString("content")
                     }
@@ -385,19 +446,22 @@ class LocalModelAdapter(private val context: android.content.Context) : AiModelA
         val err = com.nadidstudio.nexis.engine.LocalLlamaEngine.ensureLoaded(context, info.uri)
         if (err != null) return AiCallResult.PermanentError(err)
         val text = com.nadidstudio.nexis.engine.LocalLlamaEngine.chat(promptToMessages(prompt))
-        return if (text.isBlank()) AiCallResult.TransientError("رد فارغ من النموذج المحلي") else AiCallResult.Success(text)
+        return if (text.isBlank() || text.matches(Regex("[\\s.\u2026]*"))) AiCallResult.TransientError("رد فارغ من النموذج المحلي — جرّب رسالة أقصر أو نموذجًا أكبر") else AiCallResult.Success(text)
     }
 
     /** Splits the assistant's flat "system\n\nuser: ..\nassistant: .." prompt back into chat turns. */
     private fun promptToMessages(prompt: String): List<Pair<String, String>> {
         val turn = Regex("(?m)^(?=(?:user|assistant): )")
         val first = Regex("(?m)^(?:user|assistant): ").find(prompt)?.range?.first ?: prompt.length
-        val system = prompt.substring(0, first).trim().take(1500) + "\nReply in the same language the user writes in."
+        val system = prompt.substring(0, first).trim().take(2000) + "\nReply in the same language the user writes in."
         val out = mutableListOf("system" to system)
         prompt.substring(first).split(turn).filter { it.isNotBlank() }.forEach { seg ->
             val role = if (seg.startsWith("assistant: ")) "assistant" else "user"
             out.add(role to seg.substringAfter(": ").trim())
         }
-        return out
+        // Small on-device context (2048 tokens): keep only the most recent turns.
+        val system0 = out.first()
+        val turns = out.drop(1).takeLast(4).mapIndexed { i, m -> m.first to m.second.take(if (i == 3) 1000 else 500) }
+        return listOf(system0) + turns
     }
 }

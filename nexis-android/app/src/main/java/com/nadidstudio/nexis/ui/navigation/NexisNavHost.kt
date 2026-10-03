@@ -48,9 +48,9 @@ fun NexisNavHost(navController: NavHostController = rememberNavController()) {
                         )
                     }
                 },
-                onGithubSignIn = {
-                    // TEMPORARY BYPASS — same reasoning; GitHub OAuth (incl. PAT
-                    // capture for the backup feature) is still a separate task.
+                // TEMPORARY SIMULATION: email/password has no backend yet; sign in locally.
+                onEmailAuth = { name, email, _ ->
+                    com.nadidstudio.nexis.data.ProfileStore.signIn(context, name, email)
                     navController.navigate(NexisRoutes.SHELL) {
                         popUpTo(NexisRoutes.LOGIN) { inclusive = true }
                     }

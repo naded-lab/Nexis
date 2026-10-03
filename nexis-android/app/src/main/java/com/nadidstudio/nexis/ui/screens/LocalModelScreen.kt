@@ -70,6 +70,10 @@ fun LocalModelScreen(onBack: () -> Unit) {
                         fontSize = 12.sp,
                         color = if (readable) NexisPalette.Accent else MaterialTheme.colorScheme.error
                     )
+                    Text(
+                        "الحالة: ${com.nadidstudio.nexis.engine.LocalLlamaEngine.status}",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                    )
                 }
                 error?.let {
                     Spacer(Modifier.height(8.dp))

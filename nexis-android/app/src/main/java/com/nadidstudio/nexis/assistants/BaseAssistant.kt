@@ -42,9 +42,12 @@ abstract class BaseAssistant(
      */
     private fun buildPrompt(conversation: Conversation): String {
         val history = conversation.messages.joinToString("\n") { "${it.role}: ${it.text}" }
-        val files = com.nadidstudio.nexis.data.ProjectFiles.buildContext(
-            com.nadidstudio.nexis.data.InMemoryAppStore.findProject(conversation.projectId)
-        )
+        val project = com.nadidstudio.nexis.data.InMemoryAppStore.findProject(conversation.projectId)
+        val files = if (role == AssistantRole.LOCAL) {
+            // Small on-device context window: send only the file parts relevant to the last question.
+            val q = conversation.messages.lastOrNull { it.role == "user" }?.text.orEmpty()
+            com.nadidstudio.nexis.data.ProjectFiles.buildContext(project, query = q, maxChars = 1300)
+        } else com.nadidstudio.nexis.data.ProjectFiles.buildContext(project)
         val extra = com.nadidstudio.nexis.data.AssistantPrefs.promptExtra()
         val prefix = if (extra.isEmpty()) systemPromptPrefix else "$systemPromptPrefix $extra"
         return if (files.isEmpty()) "$prefix\n\n$history" else "$prefix\n\n$files\n$history"

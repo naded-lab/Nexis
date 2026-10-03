@@ -5,7 +5,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clip
+import com.nadidstudio.nexis.head.ProviderStatus
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -45,6 +49,8 @@ import com.nadidstudio.nexis.ui.theme.NexisPalette
 @Composable
 fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
     var input by remember { mutableStateOf("") }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     var showTools by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -145,6 +151,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
                         if (text.isNotEmpty() && !thinking) {
                             NexisSessionStore.addUserMessageOptimistically(text)
                             input = ""
+                            focusManager.clearFocus(); keyboard?.hide()
                             NexisSessionStore.send(text)
                         }
                     }
@@ -333,12 +340,62 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
         SelectionContainer { MarkdownText(text) }
         Row(Modifier.padding(top = 2.dp)) {
             ActionIcon(Icons.Outlined.ContentCopy, "نسخ", onCopy)
-            if (isLast) ActionIcon(Icons.Outlined.Refresh, "إعادة توليد", onRegenerate)
+            if (isLast) RegenerateAction(onRegenerate)
             ActionIcon(if (liked == true) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUpOffAlt, "أعجبني", onLike, active = liked == true)
             ActionIcon(if (liked == false) Icons.Filled.ThumbDown else Icons.Outlined.ThumbDownOffAlt, "لم يعجبني", onDislike, active = liked == false)
             ActionIcon(Icons.Outlined.IosShare, "مشاركة", onShare)
         }
     }
+}
+
+// Tap = regenerate exactly as before. Long-press = choose another model for this one
+// answer only (the assistant's saved active model is not changed).
+@OptIn(ExperimentalFoundationApi::class)
+@Composable private fun RegenerateAction(onRegenerate: () -> Unit) {
+    val canPick = NexisSessionStore.selectedRole != com.nadidstudio.nexis.assistants.AssistantRole.LOCAL
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Box(
+            Modifier.size(34.dp).clip(CircleShape).combinedClickable(onClick = onRegenerate, onLongClick = { if (canPick) expanded = true }),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Outlined.Refresh, "إعادة توليد", Modifier.size(17.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Text("إعادة التوليد بنموذج آخر", fontSize = 11.sp, color = NexisPalette.Muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            NexisSessionStore.providerIds.forEach { id -> ModelMenuItem(id, selected = false) { expanded = false; NexisSessionStore.regenerateWith(id) } }
+        }
+    }
+}
+
+// One model row for the quick-switch menus: status dot + name (+ a short reason when it is not ready).
+@Composable private fun ModelMenuItem(id: String, selected: Boolean, onClick: () -> Unit) {
+    val status = NexisSessionStore.providerStatus(id)
+    val hint = when (status) {
+        ProviderStatus.READY -> null
+        ProviderStatus.LIMITED -> NexisSessionStore.providerLimitedUntil(id)?.let { "محدود حتى ${formatLimitTime(it)}" } ?: "محدود مؤقتًا"
+        ProviderStatus.INVALID -> "مفتاح خاطئ"
+        ProviderStatus.NO_KEY -> "بدون مفتاح"
+    }
+    DropdownMenuItem(
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(providerDisplayName(id), fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                if (hint != null) Text("  $hint", fontSize = 11.sp, color = NexisPalette.Muted)
+            }
+        },
+        leadingIcon = {
+            val color = when (status) {
+                ProviderStatus.READY -> Color(0xFF2E9E6B)
+                ProviderStatus.LIMITED -> Color(0xFFE0A030)
+                ProviderStatus.INVALID -> Color(0xFFD64545)
+                ProviderStatus.NO_KEY -> NexisPalette.Muted
+            }
+            Box(Modifier.size(8.dp).background(color, CircleShape))
+        },
+        onClick = onClick,
+        modifier = Modifier.background(if (selected) NexisPalette.Accent.copy(alpha = .10f) else Color.Transparent)
+    )
 }
 
 // Reply that is still being produced.
@@ -432,12 +489,7 @@ fun ChatScreen(onOpenDrawer: () -> Unit, onAssistant: () -> Unit) {
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             NexisSessionStore.providerIds.forEach { id ->
-                val selected = id == active
-                DropdownMenuItem(
-                    text = { Text(providerDisplayName(id), fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
-                    onClick = { NexisSessionStore.setActiveProvider(role, id); expanded = false },
-                    modifier = Modifier.background(if (selected) NexisPalette.Accent.copy(alpha = .10f) else Color.Transparent)
-                )
+                ModelMenuItem(id, selected = id == active) { NexisSessionStore.setActiveProvider(role, id); expanded = false }
             }
         }
     }

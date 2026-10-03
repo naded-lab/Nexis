@@ -24,6 +24,16 @@ object CustomModelStore {
         }
     }
 
+    data class CustomModel(val id: String, val name: String, val url: String, val model: String)
+
+    fun all(c: Context): List<CustomModel> {
+        val arr = readAll(c)
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            CustomModel(o.getString("id"), o.getString("name"), o.getString("url"), o.getString("model"))
+        }
+    }
+
     /** Returns the new provider id, or null with [error] set to an Arabic message. */
     fun add(c: Context, name: String, url: String, model: String, error: (String) -> Unit): String? {
         val n = name.trim(); val u = url.trim(); val m = model.trim()

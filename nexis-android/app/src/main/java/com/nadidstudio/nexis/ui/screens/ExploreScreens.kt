@@ -55,6 +55,8 @@ private fun allFiles(): List<FileEntry> =
         .flatMap { p -> p.uploadedFilePaths.map { FileEntry(p, it) } }
         .sortedByDescending { it.file.lastModified() }
 
+internal fun countFilesMatching(q: String): Int = allFiles().count { it.name.contains(q, ignoreCase = true) }
+
 private fun formatSize(b: Long): String = when {
     b < 1024 -> "$b B"
     b < 1024 * 1024 -> "${b / 1024} KB"
@@ -199,9 +201,9 @@ private fun snippet(text: String, q: String): String {
 }
 
 @Composable
-fun SearchScreen(onBack: () -> Unit, onOpenChat: () -> Unit) {
+fun SearchScreen(onBack: () -> Unit, onOpenChat: () -> Unit, initialQuery: String = "") {
     val ctx = LocalContext.current
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(initialQuery) }
     var filter by remember { mutableIntStateOf(0) } // 0 all, 1 chats, 2 files
     var favs by remember { mutableStateOf(FileFavorites.all(ctx)) }
     var selected by remember { mutableStateOf<FileEntry?>(null) }
@@ -275,5 +277,16 @@ fun ToolsScreen(
             SettingsRow("النموذج المحلي", Icons.Outlined.Memory, sub = "مساعد ONX بدون إنترنت", onClick = onOpenLocalModel)
             SettingsRow("النسخ الاحتياطي", Icons.Outlined.CloudUpload, sub = "نسخ واستعادة عبر GitHub", onClick = onOpenBackup)
         }
+    }
+}
+
+/* ───────────── Plugins (holds Files + Tools) ───────────── */
+
+@Composable
+fun PluginsScreen(onBack: () -> Unit, onOpenFiles: () -> Unit, onOpenTools: () -> Unit) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp)) {
+        ScreenTitle("المكونات الإضافية", onBack)
+        SettingsRow("الملفات", Icons.Outlined.FolderOpen, sub = "ملفات المشاريع والمفضلة", onClick = onOpenFiles)
+        SettingsRow("الأدوات", Icons.Outlined.Build, sub = "اختصارات وأدوات Nexis", onClick = onOpenTools)
     }
 }

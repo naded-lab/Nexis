@@ -29,11 +29,10 @@ fun NexisDrawer(
     onProjects: () -> Unit,
     onSettings: () -> Unit,
     onPlugins: () -> Unit,
-    onSearch: () -> Unit = {},
-    onFiles: () -> Unit = {},
-    onTools: () -> Unit = {},
+    onSearchFiles: (String) -> Unit = {},
     onPickAssistant: () -> Unit,
     onPickModels: () -> Unit,
+    onNewChat: () -> Unit = {},
     onOpenConversation: () -> Unit = {}
 ) {
     Surface(
@@ -42,27 +41,31 @@ fun NexisDrawer(
         tonalElevation = 0.dp,
         shape = RoundedCornerShape(topEnd = 0.dp, bottomEnd = 0.dp)
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(14.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Brand(Modifier.weight(1f))
-                IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "إغلاق") }
-            }
-            Spacer(Modifier.height(14.dp))
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
             var query by remember { mutableStateOf("") }
-            SearchRow(query) { query = it }
-            Spacer(Modifier.height(14.dp))
-            // Prominent entry point for picking the AI MODEL(S) — see ModelSheet.
-            // Replaces the old "اختيار المساعد" block, which was dropped from
-            // the drawer (still reachable from the chat top bar chip).
-            AiModelsPillButton(onClick = onPickModels)
+            var searching by remember { mutableStateOf(false) }
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Nexis", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Surface(
+                    onClick = { searching = !searching; if (!searching) query = "" },
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(if (searching) Icons.Outlined.Close else Icons.Outlined.Search, "بحث", Modifier.size(20.dp))
+                    }
+                }
+            }
+            if (searching) { Spacer(Modifier.height(8.dp)); SearchRow(query) { query = it } }
             Spacer(Modifier.height(10.dp))
-            DrawerRow("البحث", Icons.Outlined.Search, onSearch)
-            DrawerRow("الملفات", Icons.Outlined.Description, onFiles)
-            DrawerRow("الأدوات", Icons.Outlined.Build, onTools)
+            DrawerRow("نماذج الذكاء الاصطناعي", NexisSparkle, onPickModels)
             DrawerRow("المشاريع", Icons.Outlined.FolderOpen, onProjects)
             DrawerRow("المهام المجدولة", Icons.Outlined.Schedule, onChat)
             DrawerRow("المكونات الإضافية", Icons.Outlined.Extension, onPlugins)
-            SectionLabel("المحادثات")
+            HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))
+            val fileHits = if (query.isBlank()) 0 else countFilesMatching(query.trim())
+            if (fileHits > 0) DrawerRow("ملفات مطابقة ($fileHits)", Icons.Outlined.Description) { onSearchFiles(query.trim()) }
             val all = NexisSessionStore.allConversations()
             val chats = if (query.isBlank()) all else all.filter { (_, c) ->
                 c.title.contains(query.trim(), true) || c.messages.any { it.text.contains(query.trim(), true) }
@@ -74,20 +77,26 @@ fun NexisDrawer(
                     Text(if (all.isEmpty()) "لا توجد محادثات محفوظة" else "لا نتائج", color = MaterialTheme.colorScheme.onSurface.copy(alpha = .48f), fontSize = 12.sp)
                 }
             } else {
-                val groups = groupChats(chats)
+                val ordered = groupChats(chats).flatMap { it.second }
+                var expanded by remember { mutableStateOf(false) }
+                val collapsed = !expanded && query.isBlank() && ordered.size > 8
+                val shown = if (collapsed) ordered.take(8) else ordered
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                    groups.forEach { (label, rows) ->
-                        item(key = "h_$label") { SectionLabel(label) }
-                        items(rows.size, key = { rows[it].second.id }) { i ->
-                            val pair = rows[i]
-                            ConversationRow(
-                                project = pair.first, convo = pair.second,
-                                onOpen = { NexisSessionStore.openConversation(pair.first, pair.second); onOpenConversation() },
-                                onRename = { renaming = pair },
-                                onPin = { NexisSessionStore.togglePin(pair.second) },
-                                onDelete = { deleting = pair }
-                            )
-                        }
+                    items(shown.size, key = { shown[it].second.id }) { i ->
+                        val pair = shown[i]
+                        ConversationRow(
+                            project = pair.first, convo = pair.second,
+                            onOpen = { NexisSessionStore.openConversation(pair.first, pair.second); onOpenConversation() },
+                            onRename = { renaming = pair },
+                            onPin = { NexisSessionStore.togglePin(pair.second) },
+                            onDelete = { deleting = pair }
+                        )
+                    }
+                    if (collapsed) item {
+                        Text(
+                            "عرض الكل...", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f),
+                            modifier = Modifier.fillMaxWidth().clickable { expanded = true }.padding(horizontal = 10.dp, vertical = 12.dp)
+                        )
                     }
                 }
             }
@@ -111,7 +120,19 @@ fun NexisDrawer(
                     onDismiss = { deleting = null }
                 )
             }
-            SettingsPill(onClick = onSettings)
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(onClick = onNewChat, shape = RoundedCornerShape(50), color = NexisPalette.Accent, contentColor = Color.White) {
+                    Row(Modifier.padding(horizontal = 20.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Edit, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("محادثة جديدة", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                Surface(onClick = onSettings, shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.size(48.dp)) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Settings, "الإعدادات", Modifier.size(22.dp)) }
+                }
+            }
         }
     }
 }
@@ -122,7 +143,7 @@ fun NexisDrawer(
             Icon(Icons.Outlined.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
             Spacer(Modifier.width(9.dp))
             Box(Modifier.weight(1f)) {
-                if (query.isEmpty()) Text("بحث في المحادثات", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
+                if (query.isEmpty()) Text("بحث في المحادثات والملفات", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
                 androidx.compose.foundation.text.BasicTextField(
                     value = query, onValueChange = onQuery, singleLine = true,
                     textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface),
@@ -141,33 +162,43 @@ fun NexisDrawer(
 @Composable private fun AiModelsPillButton(onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color = Color.Transparent
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer
     ) {
         Row(
-            Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(listOf(NexisPalette.Accent, NexisPalette.Accent2)),
-                    RoundedCornerShape(50)
-                )
-                .padding(horizontal = 18.dp, vertical = 13.dp),
-            horizontalArrangement = Arrangement.Center,
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("نماذج الذكاء الاصطناعي", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.Outlined.AutoAwesome, null, Modifier.size(17.dp), tint = Color.White)
+            Icon(NexisSparkle, null, Modifier.size(20.dp), tint = NexisPalette.Accent)
+            Spacer(Modifier.width(10.dp))
+            Text("نماذج الذكاء الاصطناعي", fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
         }
     }
 }
 
+/** Nexis sparkle mark (vector). */
+private val NexisSparkle: androidx.compose.ui.graphics.vector.ImageVector by lazy {
+    androidx.compose.ui.graphics.vector.ImageVector.Builder(
+        name = "NexisSparkle", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f
+    ).addPath(
+        pathData = androidx.compose.ui.graphics.vector.PathBuilder().apply {
+            moveTo(12f, 2f)
+            curveTo(12.6f, 7.5f, 16.5f, 11.4f, 22f, 12f)
+            curveTo(16.5f, 12.6f, 12.6f, 16.5f, 12f, 22f)
+            curveTo(11.4f, 16.5f, 7.5f, 12.6f, 2f, 12f)
+            curveTo(7.5f, 11.4f, 11.4f, 7.5f, 12f, 2f)
+            close()
+        }.nodes,
+        fill = androidx.compose.ui.graphics.SolidColor(Color.Black)
+    ).build()
+}
+
 @Composable private fun DrawerRow(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Surface(onClick = onClick, color = Color.Transparent, shape = RoundedCornerShape(13.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onSurface.copy(alpha = .72f))
-            Spacer(Modifier.width(11.dp))
-            Text(text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.width(16.dp))
+            Text(text, fontSize = 15.sp, modifier = Modifier.weight(1f))
         }
     }
 }
